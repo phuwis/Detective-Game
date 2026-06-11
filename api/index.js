@@ -3,6 +3,15 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 
+// 🟢 เพิ่มโค้ดบรรทัดนี้เข้าไป (ต่อท้ายพวกรหัสแปรพวก app = express() ได้เลย)
+// เป็นการบอกให้ Express รู้ว่าไฟล์หน้าเว็บหลักอยู่ที่ไหน
+app.use(express.static(path.join(__dirname, "../")));
+
+// 🟢 เพิ่มฟังก์ชันนี้เข้าไปเพื่อให้เวลาคนเข้าเว็บมาหน้าแรก (/) แล้วระบบส่งไฟล์ index.html ให้ทันที
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "../index.html"));
+});
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
