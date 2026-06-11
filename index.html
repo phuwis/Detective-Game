@@ -56,21 +56,27 @@
       .player-tag {
         display: inline-block;
         background: #555;
-        padding: 5px 10px;
+        padding: 8px 12px;
         margin: 5px;
         border-radius: 20px;
-        cursor: pointer;
+        font-weight: bold;
       }
-      .player-tag:hover {
-        background: #ff4d4d;
+      .clickable {
+        cursor: pointer;
+        background: #007bff;
+      }
+      .clickable:hover {
+        background: #0056b3;
       }
       #logs {
-        max-height: 120px;
+        max-height: 150px;
         overflow-y: auto;
         background: #222;
         padding: 10px;
         font-size: 14px;
         text-align: left;
+        border-radius: 5px;
+        border: 1px solid #444;
       }
     </style>
   </head>
@@ -102,10 +108,10 @@
         </div>
 
         <h3>🔍 ช่วงสืบสวนและโหวต</h3>
-        <p>กดที่ชื่อเพื่อนเพื่อทำการโหวตประณามในระบบประจักษ์พยาน:</p>
+        <p id="voting-instruction">กำลังโหลดรายชื่อผู้เล่น...</p>
         <div id="voting-list"></div>
 
-        <h4>บันทึกเหตุการณ์การโหวต:</h4>
+        <h4 style="margin-top: 20px">📜 กระดานสรุปการสืบสวน:</h4>
         <div id="logs"></div>
       </div>
     </div>
@@ -114,6 +120,8 @@
       const socket = io();
       let myName = "";
       let myRoom = "";
+      let myRole = "";
+      let currentPlayersInRoom = [];
 
       function joinRoom() {
         const inputName = document.getElementById("username").value.trim();
@@ -122,7 +130,7 @@
         if (!inputName || !inputRoom)
           return alert("กรุณากรอกข้อมูลให้ครบถ้วนครับ");
 
-        myName = inputName; // ค่อยเอาค่าไปใส่ในตัวแปร global
+        myName = inputName;
         myRoom = inputRoom;
 
         socket.emit("joinRoom", { name: myName, room: myRoom });
@@ -131,20 +139,40 @@
         document.getElementById("lobby-screen").classList.remove("hidden");
         document.getElementById("display-room").innerText = myRoom;
       }
+
       // อัปเดตรายชื่อคนในห้อง
       socket.on("roomData", ({ players, started }) => {
+        currentPlayersInRoom = players;
+
+        // อัปเดตหน้ารอล็อบบี้
         const list = document.getElementById("player-list");
         list.innerHTML = players.map((p) => `• ${p}`).join("<br>");
 
-        // อัปเดตรายชื่อสำหรับกดโหวต
-        const votingList = document.getElementById("voting-list");
-        votingList.innerHTML = players
-          .map(
-            (p) =>
-              `<span class="player-tag" onclick="vote('${p}')">🎯 ${p}</span>`,
-          )
-          .join(" ");
+        // อัปเดตหน้าโหวตระหว่างเกม
+        renderVotingList();
       });
+
+      function renderVotingList() {
+        const votingList = document.getElementById("voting-list");
+        const instruction = document.getElementById("voting-instruction");
+
+        if (myRole === "🔵 นักสืบ (Detective)") {
+          instruction.innerText =
+            "🌟 คุณคือนักสืบ! คลิกที่ชื่อเพื่อโหวตจับกุมฆาตกรได้เลย:";
+          votingList.innerHTML = currentPlayersInRoom
+            .map(
+              (p) =>
+                `<span class="player-tag clickable" onclick="vote('${p}')">🎯 จับกุม ${p}</span>`,
+            )
+            .join(" ");
+        } else {
+          instruction.innerText =
+            "🔒 คุณไม่มีสิทธิ์โหวต (เฉพาะนักสืบเท่านั้นที่มีสิทธิ์โหวต) นี่คือรายชื่อผู้ต้องสงสัยทั้งหมด:";
+          votingList.innerHTML = currentPlayersInRoom
+            .map((p) => `<span class="player-tag">👤 ${p}</span>`)
+            .join(" ");
+        }
+      }
 
       function startGame() {
         socket.emit("startGame", myRoom);
@@ -160,11 +188,15 @@
 
       // รับบทบาทเฉพาะตัวแบบลับๆ
       socket.on("receiveRole", ({ role, clue }) => {
+        myRole = role;
         document.getElementById("my-role").innerText = role;
-        document.getElementById("my-clue").innerText = `คำใบ้ของคุณ: ${clue}`;
+        document.getElementById("my-clue").innerText = clue;
+
+        // หลังจากรู้บทบาทตัวเองแล้ว ให้วาดหน้าปุ่มโหวตใหม่ตามสิทธิ์บทบาท
+        renderVotingList();
       });
 
-      // ระบบส่งเสียงโหวต
+      // ฟังก์ชันส่งข้อมูลการโหวต
       function vote(targetName) {
         socket.emit("votePlayer", { room: myRoom, targetName: targetName });
       }

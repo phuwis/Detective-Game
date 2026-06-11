@@ -63,21 +63,33 @@ io.on("connection", (socket) => {
 
     rooms[room].started = true;
 
-    // สุ่มฆาตกร 1 คน
+    // --- ระบบสุ่มบทบาทใหม่ ---
+    // สุ่มหาตำแหน่งฆาตกร และ นักสืบ (ห้ามซ้ำกัน)
     const killerIndex = Math.floor(Math.random() * roomPlayers.length);
+    let detectiveIndex = Math.floor(Math.random() * roomPlayers.length);
+    while (detectiveIndex === killerIndex) {
+      detectiveIndex = Math.floor(Math.random() * roomPlayers.length);
+    }
+
     const killerId = roomPlayers[killerIndex];
+    const detectiveId = roomPlayers[detectiveIndex];
 
     roomPlayers.forEach((id, index) => {
       if (id === killerId) {
         players[id].role = "🔴 ฆาตกร (Killer)";
         players[id].clue =
           killerClues[Math.floor(Math.random() * killerClues.length)];
+      } else if (id === detectiveId) {
+        players[id].role = "🔵 นักสืบ (Detective)";
+        players[id].clue =
+          "คุณคือนักสืบเพียงคนเดียว! จงฟังคำให้การของทุกคน หาตัวฆาตกรให้เจอ แล้วกดโหวตตัดสินคดี (ผู้เล่นคนอื่นจะโหวตไม่ได้)";
       } else {
         players[id].role = "🟢 ผู้บริสุทธิ์ (Innocent)";
         players[id].clue =
           innocentClues[Math.floor(Math.random() * innocentClues.length)];
       }
-      // ส่งบทบาทให้เฉพาะบุคคลนั้นๆ (ไม่ให้คนอื่นเห็น)
+
+      // ส่งบทบาทให้เฉพาะบุคคลนั้นๆ แบบลับๆ
       io.to(id).emit("receiveRole", {
         role: players[id].role,
         clue: players[id].clue,
@@ -89,13 +101,21 @@ io.on("connection", (socket) => {
     updateRoomPlayers(room);
   });
 
-  // 3. โหวตผู้ต้องสงสัย
+  // 3. โหวตผู้ต้องสงสัย (เช็คสิทธิ์เฉพาะนักสืบเท่านั้น)
   socket.on("votePlayer", ({ room, targetName }) => {
-    if (players[socket.id]) {
-      io.to(room).emit(
-        "announceVote",
-        `🎯 ${players[socket.id].name} โหวตสงสัย ${targetName}`,
-      );
+    const player = players[socket.id];
+    if (player) {
+      if (player.role === "🔵 นักสืบ (Detective)") {
+        io.to(room).emit(
+          "announceVote",
+          `⚖️ **[ประกาศด่วน]** นักสืบ ${player.name} ได้ทำอัญเชิญหมายจับ และส่งฟ้องโหวตสงสัยจับกุมฆาตกรไปที่: **${targetName}** !`,
+        );
+      } else {
+        socket.emit(
+          "errorMsg",
+          "คุณไม่ใช่คนนอกกฎหมาย เอ๊ย! คุณไม่ใช่นักสืบ ไม่มีสิทธิ์กดโหวตครับ ทำได้แค่พูดคุยเท่าน้นนะ!",
+        );
+      }
     }
   });
 
