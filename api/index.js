@@ -3,23 +3,22 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 
-// 🟢 เพิ่มโค้ดบรรทัดนี้เข้าไป (ต่อท้ายพวกรหัสแปรพวก app = express() ได้เลย)
-// เป็นการบอกให้ Express รู้ว่าไฟล์หน้าเว็บหลักอยู่ที่ไหน
-app.use(express.static(path.join(__dirname, "../")));
-
-// 🟢 เพิ่มฟังก์ชันนี้เข้าไปเพื่อให้เวลาคนเข้าเว็บมาหน้าแรก (/) แล้วระบบส่งไฟล์ index.html ให้ทันที
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../index.html"));
-});
-
+// 1. ประกาศและสร้างตัวแปรระบบให้เสร็จก่อนเรียกใช้งาน
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" },
 });
 
-app.use(express.static(__dirname));
+// 2. ตั้งค่า Path สำหรับดึงไฟล์หน้าเว็บหลัก (ดึงขึ้นไป 1 ระดับจากโฟลเดอร์ api)
+app.use(express.static(path.join(__dirname, "../")));
 
+// 3. จัดการ Routing ส่งไฟล์ index.html เมื่อมีคนเข้าหน้าแรก
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "../index.html"));
+});
+
+// ข้อมูลและตัวแปรของเกม
 let players = {}; // เก็บรายชื่อผู้เล่น { socketId: { name, room, role, clue, isAlive } }
 let rooms = {}; // เก็บสถานะห้อง { roomName: { started: false, killerId: null } }
 
@@ -37,6 +36,7 @@ const killerClues = [
   "คุณคือฆาตกร! คุณทำสร้อยข้อมือตกไว้ในที่เกิดเหตุ จงเบี่ยงเบนความสนใจ",
 ];
 
+// การทำงานของ Realtime WebSockets
 io.on("connection", (socket) => {
   // 1. เข้าร่วมห้อง
   socket.on("joinRoom", ({ name, room }) => {
@@ -91,10 +91,12 @@ io.on("connection", (socket) => {
 
   // 3. โหวตผู้ต้องสงสัย
   socket.on("votePlayer", ({ room, targetName }) => {
-    io.to(room).emit(
-      "announceVote",
-      `${players[socket.id].name} โหวตสงสัย ${targetName}`,
-    );
+    if (players[socket.id]) {
+      io.to(room).emit(
+        "announceVote",
+        `🎯 ${players[socket.id].name} โหวตสงสัย ${targetName}`,
+      );
+    }
   });
 
   // 4. เมื่อผู้เล่นออกหรือตัดการเชื่อมต่อ
@@ -119,10 +121,10 @@ function updateRoomPlayers(room) {
   });
 }
 
-// บรรทัดเดิมของคุณที่อยู่ท้ายไฟล์
+// ส่งออกแอปสำหรับกรณีระบบเรียกใช้เป็นโมดูล
 module.exports = app;
 
-// 🟢 ให้เพิ่มโค้ดก้อนนี้ต่อท้ายลงไปล่างสุดครับ:
+// เปิดพอร์ตรองรับการรันออนไลน์บน Render.com
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running beautifully on port ${PORT}`);
