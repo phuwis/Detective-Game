@@ -111,10 +111,7 @@
     </div>
 
     <script>
-      // ถ้าเปิดทดสอบธรรมดาให้ชี้ไปที่เซิร์ฟเวอร์พอร์ต 3000 แต่ถ้ารันผ่าน Vercel dev มันจะดึง path อัตโนมัติ
-      const socket = io(window.location.origin, {
-        transports: ["polling"], // บังคับใช้ polling เพราะ Serverless ไม่รองรับ websocket ค้างสาย
-      });
+      const socket = io();
       let myName = "";
       let myRoom = "";
 
