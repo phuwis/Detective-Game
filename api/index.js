@@ -156,12 +156,15 @@ io.on("connection", (socket) => {
     updateRoomPlayers(room);
   });
 
-  // 3. ระบบเปลี่ยนเฟสถัดไป (คุมโดยนักสืบ)
+  // 🟢 แก้ไขระบบเปลี่ยนเฟสเกม (แก้บั๊กกดปุ่มเข้าเฟส 3 แล้วนิ่ง)
   socket.on("nextPhase", (room) => {
     if (rooms[room] && rooms[room].started) {
+      // ตรวจสอบว่าถ้าอยู่เฟส 1 ให้ข้ามไปเฟส 2
       if (rooms[room].phase === 1) {
         startPhaseTimer(room, 2, rooms[room].phase2Duration);
-      } else if (rooms[room].phase === 2) {
+      }
+      // ตรวจสอบว่าถ้าอยู่เฟส 2 ให้ข้ามไปเฟส 3
+      else if (rooms[room].phase === 2) {
         startPhaseTimer(room, 3, rooms[room].phase3Duration);
       }
     }

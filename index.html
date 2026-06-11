@@ -309,21 +309,25 @@
             "💬 <b>Phase 1: ช่วงสอบสวนพยาน</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>นักสืบจะเชิญพยานพูดคุยทีละคน พยานทุกคนต้อง Roleplay แก้ต่างตามเงื่อนไขลับของตนเองเพื่อความบริสุทธิ์</span>";
           if (myRole.includes("นักสืบ")) {
             nextBtn.innerText = "ข้ามไปยัง Phase 2 (เปิดวัตถุพยานกลาง) ➡️";
+            nextBtn.classList.remove("hidden");
           }
         } else if (phase === 2) {
           phaseDisplay.innerHTML =
             "🔍 <b>Phase 2: ตรวจสอบหลักฐานชิ้นสำคัญ</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>พบหลักฐานเด็ดกลางที่เกิดเหตุ! นักสืบจะเจาะลึก timeline และเค้นความจริงว่าหลักฐานนี้ผูกมัดไปที่ใคร</span>";
           evidenceBox.classList.remove("hidden");
           document.getElementById("evidence-text").innerText = evidence;
+
+          // 🟢 จุดที่แก้ไขตัวสะเคราะห์ "นักสืบ" ให้ถูกต้องแล้ว
           if (myRole.includes("นักสืบ")) {
             nextBtn.innerText = "ข้ามไปยัง Phase 3 (ตัดสินชี้ตัวฆาตกร!) ➡️";
+            nextBtn.classList.remove("hidden");
           } else {
             nextBtn.classList.add("hidden");
           }
         } else if (phase === 3) {
           phaseDisplay.innerHTML =
             "⚖️ <b>Phase 3: ชี้ตัวคนร้ายสรุปคดี</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>เวลาสุดท้ายบีบคั้น! นักสืบต้องเลือกกดปุ่มจับกุมผู้ต้องสงสัยที่คุณคิดว่าเป็นฆาตกรตัวจริงในช่องรายชื่อ</span>";
-          nextBtn.classList.add("hidden");
+          nextBtn.classList.add("hidden"); // เฟสสุดท้าย ปุ่มข้ามจะหายไปอัตโนมัติ
           evidenceBox.classList.remove("hidden");
         }
         renderGameUI();
