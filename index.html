@@ -53,6 +53,14 @@
         margin: 15px 0;
         border-left: 5px solid #ff4d4d;
       }
+      .phase-box {
+        background: #1f3a52;
+        border-left: 5px solid #007bff;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        font-weight: bold;
+      }
       .player-tag {
         display: inline-block;
         background: #555;
@@ -63,13 +71,13 @@
       }
       .clickable {
         cursor: pointer;
-        background: #007bff;
+        background: #e67e22;
       }
       .clickable:hover {
-        background: #0056b3;
+        background: #d35400;
       }
       #logs {
-        max-height: 150px;
+        max-height: 120px;
         overflow-y: auto;
         background: #222;
         padding: 10px;
@@ -77,6 +85,12 @@
         text-align: left;
         border-radius: 5px;
         border: 1px solid #444;
+      }
+      .btn-next {
+        background: #2ecc71;
+      }
+      .btn-next:hover {
+        background: #27ae60;
       }
     </style>
   </head>
@@ -97,21 +111,44 @@
         <div id="player-list"></div>
         <br />
         <button id="start-btn" onclick="startGame()">
-          เริ่มแจกบทบาท (สำหรับหัวหน้าห้อง)
+          เริ่มแจกบทบาทและเริ่มเฟส 1
         </button>
       </div>
 
       <div id="game-screen" class="hidden">
+        <div id="phase-display" class="phase-box"></div>
+
         <div class="box">
           <h2 id="my-role" style="color: #ff4d4d">กำลังรับบทบาท...</h2>
           <p id="my-clue"></p>
         </div>
 
-        <h3>🔍 ช่วงสืบสวนและโหวต</h3>
-        <p id="voting-instruction">กำลังโหลดรายชื่อผู้เล่น...</p>
+        <div
+          id="evidence-box"
+          class="box hidden"
+          style="border-left-color: #f1c40f; background: #4a3c00"
+        >
+          <h3 style="color: #f1c40f; margin: 0 0 5px 0">
+            🔍 พบหลักฐานชิ้นสำคัญกลาง:
+          </h3>
+          <p
+            id="evidence-text"
+            style="margin: 0; font-size: 16px; font-weight: bold"
+          ></p>
+        </div>
+
+        <h3>👥 รายชื่อบุคคลในบ้านหลังนี้</h3>
         <div id="voting-list"></div>
 
-        <h4 style="margin-top: 20px">📜 กระดานสรุปการสืบสวน:</h4>
+        <button
+          id="next-phase-btn"
+          class="btn-next hidden"
+          onclick="nextPhase()"
+        >
+          ถัดไป: เข้าสู่เฟส 2 ➡️
+        </button>
+
+        <h4 style="margin-top: 20px">📜 บันทึกเหตุการณ์ในห้องสอบสวน:</h4>
         <div id="logs"></div>
       </div>
     </div>
@@ -121,84 +158,105 @@
       let myName = "";
       let myRoom = "";
       let myRole = "";
+      let currentPhase = 1;
       let currentPlayersInRoom = [];
 
       function joinRoom() {
         const inputName = document.getElementById("username").value.trim();
         const inputRoom = document.getElementById("room-id").value.trim();
-
         if (!inputName || !inputRoom)
           return alert("กรุณากรอกข้อมูลให้ครบถ้วนครับ");
-
         myName = inputName;
         myRoom = inputRoom;
-
         socket.emit("joinRoom", { name: myName, room: myRoom });
-
         document.getElementById("login-screen").classList.add("hidden");
         document.getElementById("lobby-screen").classList.remove("hidden");
         document.getElementById("display-room").innerText = myRoom;
       }
 
-      // อัปเดตรายชื่อคนในห้อง
       socket.on("roomData", ({ players, started }) => {
         currentPlayersInRoom = players;
-
-        // อัปเดตหน้ารอล็อบบี้
-        const list = document.getElementById("player-list");
-        list.innerHTML = players.map((p) => `• ${p}`).join("<br>");
-
-        // อัปเดตหน้าโหวตระหว่างเกม
-        renderVotingList();
+        document.getElementById("player-list").innerHTML = players
+          .map((p) => `• ${p}`)
+          .join("<br>");
+        renderGameUI();
       });
-
-      function renderVotingList() {
-        const votingList = document.getElementById("voting-list");
-        const instruction = document.getElementById("voting-instruction");
-
-        if (myRole === "🔵 นักสืบ (Detective)") {
-          instruction.innerText =
-            "🌟 คุณคือนักสืบ! คลิกที่ชื่อเพื่อโหวตจับกุมฆาตกรได้เลย:";
-          votingList.innerHTML = currentPlayersInRoom
-            .map(
-              (p) =>
-                `<span class="player-tag clickable" onclick="vote('${p}')">🎯 จับกุม ${p}</span>`,
-            )
-            .join(" ");
-        } else {
-          instruction.innerText =
-            "🔒 คุณไม่มีสิทธิ์โหวต (เฉพาะนักสืบเท่านั้นที่มีสิทธิ์โหวต) นี่คือรายชื่อผู้ต้องสงสัยทั้งหมด:";
-          votingList.innerHTML = currentPlayersInRoom
-            .map((p) => `<span class="player-tag">👤 ${p}</span>`)
-            .join(" ");
-        }
-      }
 
       function startGame() {
         socket.emit("startGame", myRoom);
       }
+      function nextPhase() {
+        socket.emit("nextPhase", myRoom);
+      }
+      function vote(targetName) {
+        socket.emit("votePlayer", { room: myRoom, targetName: targetName });
+      }
 
       socket.on("errorMsg", (msg) => alert(msg));
-
-      // เมื่อเกมเริ่ม เปลี่ยนหน้าจอทันที
       socket.on("gameStarted", () => {
         document.getElementById("lobby-screen").classList.add("hidden");
         document.getElementById("game-screen").classList.remove("hidden");
       });
 
-      // รับบทบาทเฉพาะตัวแบบลับๆ
       socket.on("receiveRole", ({ role, clue }) => {
         myRole = role;
         document.getElementById("my-role").innerText = role;
         document.getElementById("my-clue").innerText = clue;
-
-        // หลังจากรู้บทบาทตัวเองแล้ว ให้วาดหน้าปุ่มโหวตใหม่ตามสิทธิ์บทบาท
-        renderVotingList();
+        if (myRole === "🔵 นักสืบ (Detective)") {
+          document.getElementById("next-phase-btn").classList.remove("hidden");
+        }
       });
 
-      // ฟังก์ชันส่งข้อมูลการโหวต
-      function vote(targetName) {
-        socket.emit("votePlayer", { room: myRoom, targetName: targetName });
+      // รับข้อมูลอัปเดตเมื่อมีการเปลี่ยนเฟสเกม
+      socket.on("phaseChanged", ({ phase, evidence }) => {
+        currentPhase = phase;
+        const phaseDisplay = document.getElementById("phase-display");
+        const nextBtn = document.getElementById("next-phase-btn");
+        const evidenceBox = document.getElementById("evidence-box");
+
+        if (phase === 1) {
+          phaseDisplay.innerHTML =
+            "💬 Phase 1: ช่วงสอบสวนพยาน<br><span style='font-size:13px; font-weight:normal;'>นักสืบจะสุ่มพูดคุยกับพยาน พยานต้องทำการ Roleplay ตามเรื่องราวตัวเอง</span>";
+          if (myRole === "🔵 นักสืบ (Detective)") {
+            nextBtn.innerText = "ถัดไป: ไปยังเฟส 2 (เปิดหลักฐานกลาง) ➡️";
+            nextBtn.classList.remove("hidden");
+          }
+        } else if (phase === 2) {
+          phaseDisplay.innerHTML =
+            "🔍 Phase 2: ตรวจสอบหลักฐานชิ้นสำคัญ<br><span style='font-size:13px; font-weight:normal;'>ทุกคนมีเอี่ยวกับหลักฐานนี้! นักสืบจะเริ่มเค้นความจริงตามหลักฐานที่ปรากฏ</span>";
+          evidenceBox.classList.remove("hidden");
+          document.getElementById("evidence-text").innerText = evidence;
+          if (myRole === "🔵 นักสืb (Detective)") {
+            nextBtn.innerText = "ถัดไป: ไปยังเฟส 3 (ชี้ตัวคนร้าย!) ➡️";
+            nextBtn.classList.remove("hidden");
+          } else {
+            nextBtn.classList.add("hidden");
+          }
+        } else if (phase === 3) {
+          phaseDisplay.innerHTML =
+            "⚖️ Phase 3: ชี้ตัวคนร้าย (สรุปคดี)<br><span style='font-size:13px; font-weight:normal;'>ถึงเวลาที่นักสืบจะต้องกดเลือกชื่อเพื่อชี้ตัวฆาตกรตัวจริงแล้ว!</span>";
+          nextBtn.classList.add("hidden"); // เฟสสุดท้าย ไม่มีปุ่มไปต่อ
+        }
+        renderGameUI();
+      });
+
+      function renderGameUI() {
+        const votingList = document.getElementById("voting-list");
+
+        // ถ้าเป็นเฟส 3 และฉันคือนักสืบ -> ระบบจะเปลี่ยนชื่อทุกคนให้กลายเป็นปุ่มกดโหวตได้
+        if (currentPhase === 3 && myRole === "🔵 นักสืบ (Detective)") {
+          votingList.innerHTML = currentPlayersInRoom
+            .map(
+              (p) =>
+                `<span class="player-tag clickable" onclick="vote('${p}')">🎯 ชี้ตัวจับกุม ${p}</span>`,
+            )
+            .join(" ");
+        } else {
+          // เฟสอื่นๆ หรือเป็นคนธรรมดา เห็นแค่รายชื่อปกติ
+          votingList.innerHTML = currentPlayersInRoom
+            .map((p) => `<span class="player-tag">👤 ${p}</span>`)
+            .join(" ");
+        }
       }
 
       socket.on("announceVote", (msg) => {

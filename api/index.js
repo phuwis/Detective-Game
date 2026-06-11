@@ -3,24 +3,20 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 
-// 1. ประกาศและสร้างตัวแปรระบบให้เสร็จก่อนเรียกใช้งาน
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" },
 });
 
-// 2. ตั้งค่า Path สำหรับดึงไฟล์หน้าเว็บหลัก (ดึงขึ้นไป 1 ระดับจากโฟลเดอร์ api)
 app.use(express.static(path.join(__dirname, "../")));
 
-// 3. จัดการ Routing ส่งไฟล์ index.html เมื่อมีคนเข้าหน้าแรก
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../index.html"));
 });
 
-// ข้อมูลและตัวแปรของเกม
-let players = {}; // เก็บรายชื่อผู้เล่น { socketId: { name, room, role, clue, isAlive } }
-let rooms = {}; // เก็บสถานะห้อง { roomName: { started: false, killerId: null } }
+let players = {};
+let rooms = {};
 
 const innocentClues = [
   "คุณพบรอยเท้าเปื้อนโคลนเดินมุ่งหน้าไปทางสวนหลังบ้าน",
@@ -36,21 +32,26 @@ const killerClues = [
   "คุณคือฆาตกร! คุณทำสร้อยข้อมือตกไว้ในที่เกิดเหตุ จงเบี่ยงเบนความสนใจ",
 ];
 
-// การทำงานของ Realtime WebSockets
+// รายการหลักฐานกลางที่จะสุ่มใน Phase 2
+const globalEvidences = [
+  "🎯 พบรอยเลือดกลุ่มกรุ๊ป B ตกอยู่บนพรมเช็ดเท้า (ซึ่งไม่ใช่กรุ๊ปเลือดของผู้ตาย!)",
+  "🎯 มีคนพบจดหมายขู่กรรโชกทรัพย์ฉีกขาดอยู่ในถังขยะห้องโถง",
+  "🎯 ผลชันสูตรชี้ว่าผู้ตายถูกวางยาพิษชนิดออกฤทธิ์ช้าในแก้วไวน์",
+  "🎯 กล้องวงจรปิดหน้าบ้านถูกผ้าดำคลุมไว้ตั้งแต่เวลา 22:30 น.",
+];
+
 io.on("connection", (socket) => {
-  // 1. เข้าร่วมห้อง
   socket.on("joinRoom", ({ name, room }) => {
     socket.join(room);
     players[socket.id] = { name, room, role: "", clue: "", isAlive: true };
 
     if (!rooms[room]) {
-      rooms[room] = { started: false };
+      rooms[room] = { started: false, phase: 1, evidence: "" };
     }
 
     updateRoomPlayers(room);
   });
 
-  // 2. หัวหน้าห้องกดเริ่มเกม
   socket.on("startGame", (room) => {
     const roomPlayers = Object.keys(players).filter(
       (id) => players[id].room === room,
@@ -62,9 +63,10 @@ io.on("connection", (socket) => {
     }
 
     rooms[room].started = true;
+    rooms[room].phase = 1; // เริ่มที่ เฟส 1
+    rooms[room].evidence =
+      globalEvidences[Math.floor(Math.random() * globalEvidences.length)];
 
-    // --- ระบบสุ่มบทบาทใหม่ ---
-    // สุ่มหาตำแหน่งฆาตกร และ นักสืบ (ห้ามซ้ำกัน)
     const killerIndex = Math.floor(Math.random() * roomPlayers.length);
     let detectiveIndex = Math.floor(Math.random() * roomPlayers.length);
     while (detectiveIndex === killerIndex) {
@@ -82,44 +84,51 @@ io.on("connection", (socket) => {
       } else if (id === detectiveId) {
         players[id].role = "🔵 นักสืบ (Detective)";
         players[id].clue =
-          "คุณคือนักสืบเพียงคนเดียว! จงฟังคำให้การของทุกคน หาตัวฆาตกรให้เจอ แล้วกดโหวตตัดสินคดี (ผู้เล่นคนอื่นจะโหวตไม่ได้)";
+          "คุณคือนักสืบเพียงคนเดียว! จงทำหน้าที่สืบสวนตาม Phase ของเกมให้ดีเพื่อจับตัวคนร้าย";
       } else {
         players[id].role = "🟢 ผู้บริสุทธิ์ (Innocent)";
         players[id].clue =
           innocentClues[Math.floor(Math.random() * innocentClues.length)];
       }
 
-      // ส่งบทบาทให้เฉพาะบุคคลนั้นๆ แบบลับๆ
       io.to(id).emit("receiveRole", {
         role: players[id].role,
         clue: players[id].clue,
       });
     });
 
-    // แจ้งทุกคนในห้องว่าเกมเริ่มแล้ว
     io.to(room).emit("gameStarted");
+    io.to(room).emit("phaseChanged", { phase: 1 });
     updateRoomPlayers(room);
   });
 
-  // 3. โหวตผู้ต้องสงสัย (เช็คสิทธิ์เฉพาะนักสืบเท่านั้น)
-  socket.on("votePlayer", ({ room, targetName }) => {
-    const player = players[socket.id];
-    if (player) {
-      if (player.role === "🔵 นักสืบ (Detective)") {
+  // ระบบเปลี่ยนเฟสเกม (ควบคุมโดยนักสืบ)
+  socket.on("nextPhase", (room) => {
+    if (rooms[room] && rooms[room].started) {
+      if (rooms[room].phase < 3) {
+        rooms[room].phase += 1;
+        io.to(room).emit("phaseChanged", {
+          phase: rooms[room].phase,
+          evidence: rooms[room].evidence,
+        });
         io.to(room).emit(
           "announceVote",
-          `⚖️ **[ประกาศด่วน]** นักสืบ ${player.name} ได้ทำอัญเชิญหมายจับ และส่งฟ้องโหวตสงสัยจับกุมฆาตกรไปที่: **${targetName}** !`,
-        );
-      } else {
-        socket.emit(
-          "errorMsg",
-          "คุณไม่ใช่คนนอกกฎหมาย เอ๊ย! คุณไม่ใช่นักสืบ ไม่มีสิทธิ์กดโหวตครับ ทำได้แค่พูดคุยเท่าน้นนะ!",
+          `📢 ระบบ: ตัวเกมเข้าสู่ **Phase ${rooms[room].phase}** เรียบร้อยแล้ว!`,
         );
       }
     }
   });
 
-  // 4. เมื่อผู้เล่นออกหรือตัดการเชื่อมต่อ
+  socket.on("votePlayer", ({ room, targetName }) => {
+    const player = players[socket.id];
+    if (player && player.role === "🔵 นักสืบ (Detective)") {
+      io.to(room).emit(
+        "announceVote",
+        `⚖️ **[คดีสิ้นสุด!]** นักสืบ ${player.name} ได้โหวตชี้ตัวจับกุมฆาตกรไปที่: **${targetName}** ! สรุปผลลัพธ์ในวงสนทนากันได้เลย!`,
+      );
+    }
+  });
+
   socket.on("disconnect", () => {
     if (players[socket.id]) {
       const room = players[socket.id].room;
@@ -141,10 +150,8 @@ function updateRoomPlayers(room) {
   });
 }
 
-// ส่งออกแอปสำหรับกรณีระบบเรียกใช้เป็นโมดูล
 module.exports = app;
 
-// เปิดพอร์ตรองรับการรันออนไลน์บน Render.com
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running beautifully on port ${PORT}`);
