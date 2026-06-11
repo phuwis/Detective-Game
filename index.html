@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>คดีปริศนาออนไลน์</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        background-color: #1a1a1a;
+        color: #fff;
+        text-align: center;
+        padding: 20px;
+      }
+      .container {
+        max-width: 500px;
+        margin: 0 auto;
+        background: #2d2d2d;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+      }
+      input,
+      button {
+        width: 90%;
+        padding: 12px;
+        margin: 10px 0;
+        border-radius: 6px;
+        border: none;
+        font-size: 16px;
+      }
+      input {
+        background: #444;
+        color: #fff;
+      }
+      button {
+        background: #ff4d4d;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      button:hover {
+        background: #cc3333;
+      }
+      .hidden {
+        display: none;
+      }
+      .box {
+        background: #3d3d3d;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        border-left: 5px solid #ff4d4d;
+      }
+      .player-tag {
+        display: inline-block;
+        background: #555;
+        padding: 5px 10px;
+        margin: 5px;
+        border-radius: 20px;
+        cursor: pointer;
+      }
+      .player-tag:hover {
+        background: #ff4d4d;
+      }
+      #logs {
+        max-height: 120px;
+        overflow-y: auto;
+        background: #222;
+        padding: 10px;
+        font-size: 14px;
+        text-align: left;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🕵️‍♂️ คดีปริศนาออนไลน์</h1>
+      <hr style="border-color: #444" />
+
+      <div id="login-screen">
+        <input type="text" id="username" placeholder="ใส่ชื่อของคุณ" />
+        <input type="text" id="room-id" placeholder="รหัสห้อง (เช่น room123)" />
+        <button onclick="joinRoom()">เข้าห้องเกม</button>
+      </div>
+
+      <div id="lobby-screen" class="hidden">
+        <h2>ห้อง: <span id="display-room"></span></h2>
+        <h3>ผู้เล่นในห้องปัจจุบัน:</h3>
+        <div id="player-list"></div>
+        <br />
+        <button id="start-btn" onclick="startGame()">
+          เริ่มแจกบทบาท (สำหรับหัวหน้าห้อง)
+        </button>
+      </div>
+
+      <div id="game-screen" class="hidden">
+        <div class="box">
+          <h2 id="my-role" style="color: #ff4d4d">กำลังรับบทบาท...</h2>
+          <p id="my-clue"></p>
+        </div>
+
+        <h3>🔍 ช่วงสืบสวนและโหวต</h3>
+        <p>กดที่ชื่อเพื่อนเพื่อทำการโหวตประณามในระบบประจักษ์พยาน:</p>
+        <div id="voting-list"></div>
+
+        <h4>บันทึกเหตุการณ์การโหวต:</h4>
+        <div id="logs"></div>
+      </div>
+    </div>
+
+    <script>
+      // ถ้าเปิดทดสอบธรรมดาให้ชี้ไปที่เซิร์ฟเวอร์พอร์ต 3000 แต่ถ้ารันผ่าน Vercel dev มันจะดึง path อัตโนมัติ
+      const socket = io(
+        window.location.hostname === "localhost"
+          ? "http://localhost:3000"
+          : undefined,
+      );
+      let myName = "";
+      let myRoom = "";
+
+      function joinRoom() {
+        const inputName = document.getElementById("username").value.trim();
+        const inputRoom = document.getElementById("room-id").value.trim();
+
+        if (!inputName || !inputRoom)
+          return alert("กรุณากรอกข้อมูลให้ครบถ้วนครับ");
+
+        myName = inputName; // ค่อยเอาค่าไปใส่ในตัวแปร global
+        myRoom = inputRoom;
+
+        socket.emit("joinRoom", { name: myName, room: myRoom });
+
+        document.getElementById("login-screen").classList.add("hidden");
+        document.getElementById("lobby-screen").classList.remove("hidden");
+        document.getElementById("display-room").innerText = myRoom;
+      }
+      // อัปเดตรายชื่อคนในห้อง
+      socket.on("roomData", ({ players, started }) => {
+        const list = document.getElementById("player-list");
+        list.innerHTML = players.map((p) => `• ${p}`).join("<br>");
+
+        // อัปเดตรายชื่อสำหรับกดโหวต
+        const votingList = document.getElementById("voting-list");
+        votingList.innerHTML = players
+          .map(
+            (p) =>
+              `<span class="player-tag" onclick="vote('${p}')">🎯 ${p}</span>`,
+          )
+          .join(" ");
+      });
+
+      function startGame() {
+        socket.emit("startGame", myRoom);
+      }
+
+      socket.on("errorMsg", (msg) => alert(msg));
+
+      // เมื่อเกมเริ่ม เปลี่ยนหน้าจอทันที
+      socket.on("gameStarted", () => {
+        document.getElementById("lobby-screen").classList.add("hidden");
+        document.getElementById("game-screen").classList.remove("hidden");
+      });
+
+      // รับบทบาทเฉพาะตัวแบบลับๆ
+      socket.on("receiveRole", ({ role, clue }) => {
+        document.getElementById("my-role").innerText = role;
+        document.getElementById("my-clue").innerText = `คำใบ้ของคุณ: ${clue}`;
+      });
+
+      // ระบบส่งเสียงโหวต
+      function vote(targetName) {
+        socket.emit("votePlayer", { room: myRoom, targetName: targetName });
+      }
+
+      socket.on("announceVote", (msg) => {
+        const logs = document.getElementById("logs");
+        logs.innerHTML += `<div>${msg}</div>`;
+        logs.scrollTop = logs.scrollHeight;
+      });
+    </script>
+  </body>
+</html>
