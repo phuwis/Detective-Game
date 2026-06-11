@@ -39,19 +39,41 @@ io.on("connection", (socket) => {
   socket.on("joinRoom", ({ name, room }) => {
     socket.join(room);
 
-    if (!rooms[room]) {
-      // 🟢 เพิ่ม playedCases: [] เพื่อรองรับระบบ Checklist ของหน้าบ้าน
-      rooms[room] = {
-        started: false,
-        phase: 1,
-        evidence: "",
-        phase2Duration: 300,
-        phase3Duration: 180,
-        currentCase: null,
-        playersData: {},
-        playedCases: [],
+    // กรณีรีเฟรชหน้าจอ (ดึงโปรไฟล์และคะแนนเดิมกลับมา)
+    if (rooms[room].playersData[name]) {
+      players[socket.id] = rooms[room].playersData[name];
+      socket.emit("receiveRole", {
+        role: players[socket.id].role,
+        clue: players[socket.id].clue,
+      });
+      if (rooms[room].currentCase) {
+        socket.emit("caseDetails", {
+          title: rooms[room].currentCase.caseTitle,
+          subtitle: rooms[room].currentCase.caseSubtitle,
+        });
+        socket.emit("phaseChanged", {
+          phase: rooms[room].phase,
+          evidence: rooms[room].evidence,
+        });
+      }
+    } else {
+      if (rooms[room].started) {
+        socket.emit("errorMsg", "ห้องนี้เริ่มเกมไปแล้วครับ");
+        return;
+      }
+      // 🟢 เพิ่มตัวแปร score: 0 ให้ผู้เล่นใหม่
+      players[socket.id] = {
+        name,
+        room,
+        role: "",
+        clue: "",
+        isAlive: true,
+        score: 0,
       };
+      rooms[room].playersData[name] = players[socket.id];
     }
+
+    updateRoomPlayers(room);
 
     // 🟢 ส่งข้อมูล Checklist คดีไปอัปเดตหน้าจอทันทีที่มีการเชื่อมต่อเข้าห้อง
     sendChecklistToRoom(room);
@@ -242,31 +264,80 @@ io.on("connection", (socket) => {
   });
 
   // 4. ระบบนักสืบโหวตจับกุมคนร้าย (อัปเดตเพิ่มการส่งโพยเฉลยคดี)
+  // 4. ระบบนักสืบโหวตจับกุมคนร้าย และคำนวณคะแนนแพ้-ชนะอย่างเป็นทางการ
   socket.on("votePlayer", ({ room, targetName }) => {
     const player = players[socket.id];
     if (player && player.role.includes("นักสืบ")) {
-      clearInterval(timers[room]); // หยุดเวลานาฬิกาถอยหลัง
+      clearInterval(timers[room]);
       io.to(room).emit("timerUpdate", {
         minutes: 0,
         seconds: 0,
         expired: true,
       });
 
-      // ประกาศชื่อผู้ถูกจับกุมในช่องแชทบันทึกคำให้การตามปกติ
-      io.to(room).emit(
-        "announceVote",
-        `⚖️ **[ปิดคดีอย่างเป็นทางการ!]** นักสืบ ${player.name} ได้ทุบโต๊ะชี้ตัวจับกุมผู้ต้องสงสัยหลักคือ: **${targetName}** ! สมาชิกทุกคนเปิดเผยบทบาทจริงในแชทเพื่อตรวจสอบผลลัพธ์ได้เลย!`,
+      const roomPlayersIds = Object.keys(players).filter(
+        (id) => players[id].room === room,
       );
+      const totalPlayersCount = roomPlayersIds.length;
 
-      // 🟢 ดึงข้อมูลเฉลยจากคดีปัจจุบันในห้องนั้นออกมา
+      // ค้นหาว่าใครในห้องนี้ที่เป็น "ฆาตกร" ตัวจริง
+      let killerId = "";
+      let killerName = "";
+      roomPlayersIds.forEach((id) => {
+        // อิงจากชื่อบทบาทที่มีคำว่า ฆาตกร หรือตรวจสอบจากเงื่อนไขที่คุณตั้งไว้ตอนแจกบทบาท
+        // สมมติว่าระบบเช็กจากชื่อ Role ที่ไม่มีคำว่า "นักสืบ" และ "พยาน" หรือมีคำระบุพิเศษ
+        // วิธีที่ชัวร์ที่สุด: เช็กว่า role ของคนนั้น 'ไม่ใช่นักสืบ' และ 'ไม่มีใน innocentScenarios' ของคดีปัจจุบัน
+        // ในที่นี้เราจะเช็กจากคำคีย์เวิร์ดของ Role ที่คุณเซ็ตไว้ฝั่งเซิร์ฟเวอร์ครับ เช่น "ฆาตกร" หรือบทบาทคนร้าย
+        // เพื่อความแม่นยำสูงสุด ให้เช็กว่าบทบาทของเขาตรงกับ killerScenarios ในด่านนั้นๆ หรือไม่
+        const isTargetInnocent = rooms[room].currentCase.innocentScenarios.some(
+          (i) => players[id].role === i.roleName,
+        );
+        if (!isTargetInnocent && !players[id].role.includes("นักสืบ")) {
+          killerId = id;
+          killerName = players[id].name;
+        }
+      });
+
+      // 🟢 ตัดสินผลลัพธ์คดี
+      const isDetectiveCorrect = targetName === killerName;
+      let winners = [];
+
+      if (isDetectiveCorrect) {
+        // ฝั่งคนดีชนะ (นักสืบ + พยานทุกคน)
+        roomPlayersIds.forEach((id) => {
+          if (id !== killerId) {
+            players[id].score += 1; // ได้คนละ 1 คะแนนเท่ากันทุกกรณี
+            winners.push(players[id].name);
+          }
+        });
+      } else {
+        // ฝั่งฆาตกรชนะคนเดียว
+        if (killerId) {
+          // คิดแต้มตามจำนวนคน: เล่น 3-4 คนได้ 2 คะแนน | เล่น 5 คนขึ้นไปได้ 1 คะแนน
+          const killerBonus = totalPlayersCount <= 4 ? 2 : 1;
+          players[killerId].score += killerBonus;
+          winners.push(killerName);
+        }
+      }
+
+      // ดึงโพยเฉลยคดี
       const currentCaseSolution =
-        rooms[room].currentCase?.caseSolution || "ไม่พบข้อมูลเฉลยสำหรับคดีนี้";
+        rooms[room].currentCase?.caseSolution || "ไม่พบข้อมูลเฉลย";
 
-      // 🟢 ส่งสัญญาณบอกทุกหน้าจอให้เปิด Pop-up เฉลยพร้อมๆ กัน
+      // อัปเดตข้อมูลตารางคะแนนล่าสุดเข้าประวัติห้องเกม
+      roomPlayersIds.forEach((id) => {
+        rooms[room].playersData[players[id].name].score = players[id].score;
+      });
+
+      // 🟢 ส่งสัญญาณปิดคดี และประกาศรายชื่อผู้ชนะอย่างเป็นทางการ
       io.to(room).emit("showSolutionPopup", {
         targetName: targetName,
         solutionText: currentCaseSolution,
+        winners: winners, // ส่งรายชื่อคนชนะไปให้หน้าบ้านตรวจสอบผลแพ้ชนะของตัวเอง
       });
+
+      // ส่งประวัติคะแนนชุดใหม่ไปให้ทุกหน้าจอเปิดอัปเดต
+      updateRoomPlayers(room);
     }
   });
 

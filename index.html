@@ -12,10 +12,11 @@
         color: #fff;
         text-align: center;
         padding: 20px;
+        margin: 0;
       }
       .container {
         max-width: 550px;
-        margin: 0 auto;
+        margin: 40px auto 20px auto;
         background: #1e1e1e;
         padding: 25px;
         border-radius: 14px;
@@ -153,9 +154,121 @@
       .status-ready {
         color: #888;
       }
+
+      /* 🟢 สไตล์เพิ่มเติมสำหรับปุ่มลอย (Floating Action Button) และตารางคะแนน */
+      .fab-score-btn {
+        position: fixed;
+        top: 15px;
+        left: 15px;
+        background: #f1c40f;
+        color: #000;
+        padding: 10px 16px;
+        border-radius: 30px;
+        font-weight: bold;
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(241, 196, 15, 0.4);
+        cursor: pointer;
+        z-index: 999;
+        border: 2px solid #fff;
+        transition: 0.2s;
+        width: auto;
+      }
+      .fab-score-btn:hover {
+        transform: scale(1.05);
+        background: #f39c12;
+      }
+      .score-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.75);
+        z-index: 10000;
+        justify-content: center;
+        align-items: center;
+      }
+      .score-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 15px 0;
+        text-align: left;
+      }
+      .score-table th,
+      .score-table td {
+        padding: 10px;
+        border-bottom: 1px solid #444;
+      }
+      .score-table th {
+        color: #f1c40f;
+      }
+
+      /* ป้ายแจ้งผลแพ้ชนะตอนท้ายเกม */
+      .result-badge {
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 22px;
+        font-weight: bold;
+        margin: 15px 0;
+        text-transform: uppercase;
+      }
+      .result-win {
+        background: #2ecc71;
+        color: #fff;
+        border: 2px solid #fff;
+        box-shadow: 0 0 15px rgba(46, 204, 113, 0.4);
+      }
+      .result-lose {
+        background: #e74c3c;
+        color: #fff;
+        border: 2px solid #fff;
+        box-shadow: 0 0 15px rgba(231, 76, 60, 0.4);
+      }
     </style>
   </head>
   <body>
+    <button
+      id="score-fab"
+      class="fab-score-btn hidden"
+      onclick="toggleScoreModal(true)"
+    >
+      🏆 ตารางคะแนน
+    </button>
+
+    <div id="score-modal" class="score-modal" onclick="toggleScoreModal(false)">
+      <div
+        style="
+          background: #222;
+          padding: 25px;
+          border-radius: 12px;
+          width: 85%;
+          max-width: 400px;
+          border: 2px solid #444;
+        "
+        onclick="event.stopPropagation()"
+      >
+        <h3 style="margin-top: 0; color: #f1c40f; font-size: 22px">
+          📊 คะแนนสะสมประจำห้อง
+        </h3>
+        <table class="score-table">
+          <thead>
+            <tr>
+              <th>ผู้ต้องสงสัย</th>
+              <th style="text-align: right">คะแนนรวม</th>
+            </tr>
+          </thead>
+          <tbody id="score-board-rows"></tbody>
+        </table>
+        <button
+          onclick="toggleScoreModal(false)"
+          style="background: #555; margin-bottom: 0; padding: 8px"
+        >
+          ปิดหน้าต่าง
+        </button>
+      </div>
+    </div>
+
     <div class="container">
       <h1 id="game-title">🕵️‍♂️ คดีปริศนาออนไลน์</h1>
       <p
@@ -184,7 +297,6 @@
         <button id="start-btn" onclick="startGame()">
           เริ่มปิดประตูคฤหาสน์ (เริ่มเฟส 1)
         </button>
-
         <button
           onclick="leaveGame()"
           style="
@@ -267,7 +379,6 @@
         >
           ส่งต่อเข้าสู่เฟสถัดไป ➡️
         </button>
-
         <button
           id="back-to-lobby-btn"
           class="hidden"
@@ -316,7 +427,7 @@
       <div
         style="
           background: #2c3e50;
-          padding: 30px;
+          padding: 25px;
           border-radius: 15px;
           max-width: 480px;
           width: 90%;
@@ -326,15 +437,20 @@
           text-align: center;
         "
       >
-        <h2 style="color: #f1c40f; margin-top: 0; font-size: 26px">
+        <div id="pop-user-result" class="result-badge">
+          กำลังตรวจใบสรุปผล...
+        </div>
+
+        <h2 style="color: #f1c40f; margin-top: 10px; font-size: 24px">
           ⚖️ สรุปผลการจับกุม!
         </h2>
         <p
           style="
-            font-size: 18px;
+            font-size: 17px;
             background: #1a252f;
             padding: 10px;
             border-radius: 8px;
+            margin-bottom: 15px;
           "
         >
           ผู้ต้องสงสัยที่ถูกจับ:
@@ -348,7 +464,7 @@
             padding: 15px;
             border-radius: 8px;
             text-align: left;
-            margin: 20px 0;
+            margin: 15px 0;
             border-left: 5px solid #2ecc71;
             line-height: 1.6;
           "
@@ -385,9 +501,7 @@
       let myRoom = "";
       let myRole = "";
       let currentPhase = 1;
-      let currentPlayersInRoom = [];
 
-      // เช็กข้อมูลเก่าตอนเปิดเว็บ/รีเฟรชหน้าจอ
       window.onload = function () {
         const savedName = localStorage.getItem("detective_name");
         const savedRoom = localStorage.getItem("detective_room");
@@ -395,6 +509,7 @@
           myName = savedName;
           myRoom = savedRoom;
           document.getElementById("login-screen").classList.add("hidden");
+          document.getElementById("score-fab").classList.remove("hidden"); // แสดงปุ่มคะแนนลอยตัว
           document.getElementById("display-room").innerText = myRoom;
           socket.emit("joinRoom", { name: myName, room: myRoom });
         }
@@ -411,35 +526,56 @@
         localStorage.setItem("detective_name", myName);
         localStorage.setItem("detective_room", myRoom);
 
-        socket.emit("joinRoom", { name: myName, room: myRoom });
         document.getElementById("login-screen").classList.add("hidden");
+        document.getElementById("score-fab").classList.remove("hidden"); // 🟢 ปลดล็อกให้เห็นปุ่มคะแนนลอยตัว
         document.getElementById("display-room").innerText = myRoom;
+        socket.emit("joinRoom", { name: myName, room: myRoom });
       }
 
-      // กดออกจากห้องแบบถาวร (ลบ Session)
       function leaveGame() {
         localStorage.clear();
         window.location.reload();
       }
 
-      socket.on("roomData", ({ players, started }) => {
-        currentPlayersInRoom = players;
+      // ฟังก์ชันเปิด-ปิด หน้าต่างตารางคะแนนสะสม
+      function toggleScoreModal(show) {
+        document.getElementById("score-modal").style.display = show
+          ? "flex"
+          : "none";
+      }
+
+      socket.on("roomData", ({ players, started, rawPlayersData }) => {
         document.getElementById("player-list").innerHTML = players
           .map((p) => `• <b>${p}</b>`)
           .join("<br>");
 
-        // 🟢 แก้ไขระบบสลับหน้าจอตามสถานะจริงของห้องหลังจากรีเฟรช (แก้จุดที่ 3)
+        // 🟢 อัปเดตตารางสรุปคะแนนเรียลไทม์ใส่ลงไปใน Leaderboard FAB
+        if (rawPlayersData) {
+          const sortedPlayers = Object.values(rawPlayersData).sort(
+            (a, b) => b.score - a.score,
+          );
+          document.getElementById("score-board-rows").innerHTML = sortedPlayers
+            .map(
+              (p) => `
+                <tr>
+                    <td>👤 ${p.name}</td>
+                    <td style="text-align: right; font-weight: bold; color: #f1c40f;">${p.score} แต้ม</td>
+                </tr>
+            `,
+            )
+            .join("");
+        }
+
         if (started) {
           document.getElementById("lobby-screen").classList.add("hidden");
           document.getElementById("game-screen").classList.remove("hidden");
         } else {
-          // ถ้าเช็กแล้วว่าเซิร์ฟเวอร์บอกว่าห้องนี้ยังไม่กดเริ่มเกม ให้เปิดหน้า Lobby ค้างไว้ ไม่เด้งหลุด
           if (localStorage.getItem("detective_name")) {
             document.getElementById("lobby-screen").classList.remove("hidden");
             document.getElementById("game-screen").classList.add("hidden");
           }
         }
-        renderGameUI();
+        renderGameUI(players);
       });
 
       function startGame() {
@@ -461,13 +597,10 @@
 
       function closeSolutionModal() {
         document.getElementById("solution-modal").style.display = "none";
-        // เมื่อเปิดดูเฉลยเสร็จ จะเปิดปุ่มสีเขียวให้กดพาทุกคนกลับหน้าล็อบบี้ได้ทันที
         document.getElementById("back-to-lobby-btn").classList.remove("hidden");
       }
 
-      socket.on("errorMsg", (msg) => {
-        alert(msg);
-      });
+      socket.on("errorMsg", (msg) => alert(msg));
 
       socket.on("gameStarted", () => {
         document.getElementById("lobby-screen").classList.add("hidden");
@@ -480,7 +613,7 @@
         if (!checklistArea) return;
         if (checklist.length === 0) {
           checklistArea.innerHTML =
-            "<span style='color:#aaa;'>ไม่พบข้อมูลคดีในระบบ</span>";
+            "<span style='color:#aaa;'>ไม่พบข้อมูลคดี</span>";
           return;
         }
         checklistArea.innerHTML = checklist
@@ -497,12 +630,10 @@
           .join("");
       });
 
-      // เมื่อทุกคนในห้องโดนดึงกลับหน้าล็อบบี้สำเร็จ ให้สลับเปลี่ยนหน้าจอเคลียร์ค่าเดิม
       socket.on("returnedToLobby", () => {
         document.getElementById("game-screen").classList.add("hidden");
         document.getElementById("lobby-screen").classList.remove("hidden");
         document.getElementById("back-to-lobby-btn").classList.add("hidden");
-
         document.getElementById("game-title").innerText = "🕵️‍♂️ คดีปริศนาออนไลน์";
         document.getElementById("game-subtitle").innerText =
           "กรุณาเข้าห้องเพื่อจับฉลากสุ่มคดีฆาตกรรม";
@@ -526,16 +657,12 @@
 
       socket.on("timerUpdate", ({ minutes, seconds, expired }) => {
         const timerElement = document.getElementById("game-timer");
-        const strMins = String(minutes).padStart(2, "0");
-        const strSecs = String(seconds).padStart(2, "0");
-        timerElement.innerText = `${strMins}:${strSecs}`;
-
+        timerElement.innerText = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
         if (minutes === 0 && seconds < 60 && !expired) {
           timerElement.classList.add("timer-warning");
         } else {
           timerElement.classList.remove("timer-warning");
         }
-
         if (expired) {
           timerElement.innerText = "00:00";
         }
@@ -560,7 +687,6 @@
             "🔍 <b>Phase 2: ตรวจสอบหลักฐานชิ้นสำคัญ</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>พบหลักฐานเด็ดกลางที่เกิดเหตุ! นักสืบจะเจาะลึก timeline และเค้นความจริงว่าหลักฐานนี้ผูกมัดไปที่ใคร</span>";
           evidenceBox.classList.remove("hidden");
           document.getElementById("evidence-text").innerText = evidence;
-
           if (myRole.includes("นักสืบ")) {
             nextBtn.innerText = "ข้ามไปยัง Phase 3 (ตัดสินชี้ตัวฆาตกร!) ➡️";
             nextBtn.classList.remove("hidden");
@@ -572,23 +698,21 @@
             "⚖️ <b>Phase 3: ชี้ตัวคนร้ายสรุปคดี</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>เวลาสุดท้ายบีบคั้น! นักสืบต้องเลือกกดปุ่มจับกุมผู้ต้องสงสัยที่คุณคิดว่าเป็นฆาตกรตัวจริงในช่องรายชื่อ</span>";
           nextBtn.classList.add("hidden");
           evidenceBox.classList.remove("hidden");
-          if (evidence)
-            document.getElementById("evidence-text").innerText = evidence;
         }
-        renderGameUI();
       });
 
-      function renderGameUI() {
+      function renderGameUI(playersList) {
         const votingList = document.getElementById("voting-list");
+        if (!votingList) return;
         if (currentPhase === 3 && myRole.includes("นักสืบ")) {
-          votingList.innerHTML = currentPlayersInRoom
+          votingList.innerHTML = playersList
             .map(
               (p) =>
                 `<span class="player-tag clickable" onclick="vote('${p}')">🎯 จับกุม ${p}</span>`,
             )
             .join(" ");
         } else {
-          votingList.innerHTML = currentPlayersInRoom
+          votingList.innerHTML = playersList
             .map((p) => `<span class="player-tag">👤 ${p}</span>`)
             .join(" ");
         }
@@ -600,11 +724,27 @@
         logs.scrollTop = logs.scrollHeight;
       });
 
-      socket.on("showSolutionPopup", ({ targetName, solutionText }) => {
-        document.getElementById("pop-target").innerText = targetName;
-        document.getElementById("pop-solution").innerText = solutionText;
-        document.getElementById("solution-modal").style.display = "flex";
-      });
+      // 🟢 ดักรับสัญญาณเฉลย และคำนวณป้ายประกาศคุณคือผู้ชนะหรือผู้แพ้รายบุคคล
+      socket.on(
+        "showSolutionPopup",
+        ({ targetName, solutionText, winners }) => {
+          document.getElementById("pop-target").innerText = targetName;
+          document.getElementById("pop-solution").innerText = solutionText;
+
+          const resultBadge = document.getElementById("pop-user-result");
+
+          // เช็กว่าชื่อของเราติดโผอยู่ในลิสต์กลุ่มคนชนะ (winners) ที่เซิร์ฟเวอร์คำนวณส่งมาหรือไม่
+          if (winners.includes(myName)) {
+            resultBadge.innerText = "🎉 คุณคือผู้ชนะในตานี้!";
+            resultBadge.className = "result-badge result-win";
+          } else {
+            resultBadge.innerText = "💀 คุณคือผู้แพ้ในตานี้!";
+            resultBadge.className = "result-badge result-lose";
+          }
+
+          document.getElementById("solution-modal").style.display = "flex";
+        },
+      );
     </script>
   </body>
 </html>
