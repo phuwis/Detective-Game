@@ -130,6 +130,30 @@
       .btn-next:hover {
         background: #219653;
       }
+
+      /* สไตล์เพิ่มเติมสำหรับ Checklist */
+      .checklist-box {
+        background: #151515;
+        border: 1px solid #444;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: left;
+        margin-top: 20px;
+      }
+      .checklist-item {
+        font-size: 14px;
+        margin: 6px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .status-played {
+        color: #2ecc71;
+        font-weight: bold;
+      }
+      .status-ready {
+        color: #888;
+      }
     </style>
   </head>
   <body>
@@ -161,6 +185,34 @@
         <button id="start-btn" onclick="startGame()">
           เริ่มปิดประตูคฤหาสน์ (เริ่มเฟส 1)
         </button>
+
+        <div class="checklist-box">
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 10px;
+            "
+          >
+            <h4 style="margin: 0; color: #f1c40f">
+              🗂️ แฟ้มตรวจสอบประวัติคดีประจำห้อง:
+            </h4>
+            <button
+              onclick="resetCaseHistory()"
+              style="
+                width: auto;
+                padding: 4px 10px;
+                font-size: 12px;
+                margin: 0;
+                background: #d35400;
+              "
+            >
+              รีเฟรชล้างคดีทั้งหมด 🔄
+            </button>
+          </div>
+          <div id="case-checklist-area">กำลังดึงรายการคดี...</div>
+        </div>
       </div>
 
       <div id="game-screen" class="hidden">
@@ -205,6 +257,15 @@
           ส่งต่อเข้าสู่เฟสถัดไป ➡️
         </button>
 
+        <button
+          id="back-to-lobby-btn"
+          class="hidden"
+          onclick="requestBackToLobby()"
+          style="background: #34495e; color: #fff; margin-top: 15px"
+        >
+          🔙 พาเพื่อนกลับไปหน้า Lobby เพื่อเล่นต่อ
+        </button>
+
         <h4
           style="
             margin-top: 20px;
@@ -216,6 +277,13 @@
           📜 บันทึกคำให้การและการสรุปคดี:
         </h4>
         <div id="logs"></div>
+        <br />
+        <button
+          onclick="leaveGame()"
+          style="background: #555; font-size: 13px; padding: 5px; width: auto"
+        >
+          ออกจากห้องเกม (ลบ Session)
+        </button>
       </div>
     </div>
 
@@ -283,9 +351,7 @@
           ></p>
         </div>
         <button
-          onclick="
-            document.getElementById('solution-modal').style.display = 'none'
-          "
+          onclick="closeSolutionModal()"
           style="
             background: #e74c3c;
             color: white;
@@ -310,6 +376,18 @@
       let currentPhase = 1;
       let currentPlayersInRoom = [];
 
+      window.onload = function () {
+        const savedName = localStorage.getItem("detective_name");
+        const savedRoom = localStorage.getItem("detective_room");
+        if (savedName && savedRoom) {
+          myName = savedName;
+          myRoom = savedRoom;
+          document.getElementById("login-screen").classList.add("hidden");
+          document.getElementById("display-room").innerText = myRoom;
+          socket.emit("joinRoom", { name: myName, room: myRoom });
+        }
+      };
+
       function joinRoom() {
         const inputName = document.getElementById("username").value.trim();
         const inputRoom = document.getElementById("room-id").value.trim();
@@ -317,10 +395,18 @@
           return alert("กรุณากรอกข้อมูลให้ครบถ้วนครับ");
         myName = inputName;
         myRoom = inputRoom;
+
+        localStorage.setItem("detective_name", myName);
+        localStorage.setItem("detective_room", myRoom);
+
         socket.emit("joinRoom", { name: myName, room: myRoom });
         document.getElementById("login-screen").classList.add("hidden");
-        document.getElementById("lobby-screen").classList.remove("hidden");
         document.getElementById("display-room").innerText = myRoom;
+      }
+
+      function leaveGame() {
+        localStorage.clear();
+        window.location.reload();
       }
 
       socket.on("roomData", ({ players, started }) => {
@@ -328,6 +414,16 @@
         document.getElementById("player-list").innerHTML = players
           .map((p) => `• <b>${p}</b>`)
           .join("<br>");
+
+        if (started) {
+          document.getElementById("lobby-screen").classList.add("hidden");
+          document.getElementById("game-screen").classList.remove("hidden");
+        } else {
+          if (localStorage.getItem("detective_name")) {
+            document.getElementById("lobby-screen").classList.remove("hidden");
+            document.getElementById("game-screen").classList.add("hidden"); // ซ่อนหน้าเกมชัวร์ๆ
+          }
+        }
         renderGameUI();
       });
 
@@ -341,14 +437,64 @@
         socket.emit("votePlayer", { room: myRoom, targetName: targetName });
       }
 
-      socket.on("errorMsg", (msg) => alert(msg));
+      // 🟢 ฟังก์ชันส่งสัญญาณขอล้างประวัติการเล่นคดีเพื่อเริ่มสุ่มใหม่ทั้งหมด
+      function resetCaseHistory() {
+        socket.emit("resetRoomCases", myRoom);
+      }
+
+      // 🟢 ฟังก์ชันส่งสัญญาณขอกลับหน้าล็อบบี้
+      function requestBackToLobby() {
+        socket.emit("backToLobby", myRoom);
+      }
+
+      function closeSolutionModal() {
+        document.getElementById("solution-modal").style.display = "none";
+        // เมื่อดูเฉลยเสร็จ จะเปิดปุ่มให้สามารถกดพาทุกคนกลับหน้า Lobby ได้
+        document.getElementById("back-to-lobby-btn").classList.remove("hidden");
+      }
+
+      socket.on("errorMsg", (msg) => {
+        alert(msg);
+      });
 
       socket.on("gameStarted", () => {
         document.getElementById("lobby-screen").classList.add("hidden");
         document.getElementById("game-screen").classList.remove("hidden");
+        document.getElementById("back-to-lobby-btn").classList.add("hidden"); // รีเซ็ตซ่อนปุ่มกลับล็อบบี้
       });
 
-      // อัปเดตหัวข้อและคำอธิบายคดีที่สุ่มมาจาก Server
+      // 🟢 ดักรับข้อมูล Checklist เพื่อเอาไปเรนเดอร์ในบอร์ดหน้าล็อบบี้
+      socket.on("updateChecklist", ({ checklist }) => {
+        const checklistArea = document.getElementById("case-checklist-area");
+        if (checklist.length === 0) {
+          checklistArea.innerHTML =
+            "<span style='color:#aaa;'>ไม่พบข้อมูลคดีในระบบ</span>";
+          return;
+        }
+        checklistArea.innerHTML = checklist
+          .map(
+            (item) => `
+            <div class="checklist-item">
+                <span>📁 ${item.title}</span>
+                <span class="${item.played ? "status-played" : "status-ready"}">
+                    ${item.played ? "🟩 เล่นแล้ว" : "⬜ ยังไม่ได้สุ่ม"}
+                </span>
+            </div>
+        `,
+          )
+          .join("");
+      });
+
+      // 🟢 เมื่อคนในห้องกดพาทุกคนกลับหน้าล็อบบี้สำเร็จ ให้สลับหน้าจอกลับมารอเพื่อน
+      socket.on("returnedToLobby", () => {
+        document.getElementById("game-screen").classList.add("hidden");
+        document.getElementById("lobby-screen").classList.remove("hidden");
+        // รีเซ็ตข้อความหัวเว็บเดิม
+        document.getElementById("game-title").innerText = "🕵️‍♂️ คดีปริศนาออนไลน์";
+        document.getElementById("game-subtitle").innerText =
+          "กรุณาเข้าห้องเพื่อจับฉลากสุ่มคดีฆาตกรรม";
+      });
+
       socket.on("caseDetails", ({ title, subtitle }) => {
         document.getElementById("game-title").innerText = `🕵️‍♂️ ${title}`;
         document.getElementById("game-subtitle").innerText = subtitle;
@@ -360,10 +506,11 @@
         document.getElementById("my-clue").innerText = clue;
         if (myRole.includes("นักสืบ")) {
           document.getElementById("next-phase-btn").classList.remove("hidden");
+        } else {
+          document.getElementById("next-phase-btn").classList.add("hidden");
         }
       });
 
-      // อัพเดตนาฬิกาถอยหลังเรียลไทม์
       socket.on("timerUpdate", ({ minutes, seconds, expired }) => {
         const timerElement = document.getElementById("game-timer");
         const strMins = String(minutes).padStart(2, "0");
@@ -381,7 +528,6 @@
         }
       });
 
-      // ระบบเปลี่ยนเฟสและเงื่อนไขการแสดงผล UI
       socket.on("phaseChanged", ({ phase, evidence }) => {
         currentPhase = phase;
         const phaseDisplay = document.getElementById("phase-display");
@@ -391,6 +537,7 @@
         if (phase === 1) {
           phaseDisplay.innerHTML =
             "💬 <b>Phase 1: ช่วงสอบสวนพยาน</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>นักสืบจะเชิญพยานพูดคุยทีละคน พยานทุกคนต้อง Roleplay แก้ต่างตามเงื่อนไขลับของตนเองเพื่อความบริสุทธิ์</span>";
+          evidenceBox.classList.add("hidden");
           if (myRole.includes("นักสืบ")) {
             nextBtn.innerText = "ข้ามไปยัง Phase 2 (เปิดวัตถุพยานกลาง) ➡️";
             nextBtn.classList.remove("hidden");
@@ -412,6 +559,8 @@
             "⚖️ <b>Phase 3: ชี้ตัวคนร้ายสรุปคดี</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>เวลาสุดท้ายบีบคั้น! นักสืบต้องเลือกกดปุ่มจับกุมผู้ต้องสงสัยที่คุณคิดว่าเป็นฆาตกรตัวจริงในช่องรายชื่อ</span>";
           nextBtn.classList.add("hidden");
           evidenceBox.classList.remove("hidden");
+          if (evidence)
+            document.getElementById("evidence-text").innerText = evidence;
         }
         renderGameUI();
       });
@@ -438,7 +587,6 @@
         logs.scrollTop = logs.scrollHeight;
       });
 
-      // ดักรับสัญญาณเปิด Pop-up เฉลยท้ายเกมพร้อมกันทุกคน
       socket.on("showSolutionPopup", ({ targetName, solutionText }) => {
         document.getElementById("pop-target").innerText = targetName;
         document.getElementById("pop-solution").innerText = solutionText;

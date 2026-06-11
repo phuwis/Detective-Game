@@ -35,11 +35,12 @@ let rooms = {};
 let timers = {};
 
 io.on("connection", (socket) => {
-  // 1. ผู้เล่นเข้าร่วมห้องเกม
+  // 1. ผู้เล่นเข้าร่วมห้องเกม (อัปเดตระบบป้องกันการหลุดเมื่อรีเฟรชหน้าจอ)
   socket.on("joinRoom", ({ name, room }) => {
     socket.join(room);
-    players[socket.id] = { name, room, role: "", clue: "", isAlive: true };
+
     if (!rooms[room]) {
+      // เพิ่มตัวแปร playedCases เอาไว้จดบันทึก ID คดีที่ห้องนี้เล่นไปแล้ว
       rooms[room] = {
         started: false,
         phase: 1,
@@ -47,12 +48,59 @@ io.on("connection", (socket) => {
         phase2Duration: 300,
         phase3Duration: 180,
         currentCase: null,
+        playersData: {},
+        playedCases: [],
       };
     }
+
+    // ทุกครั้งที่มีคนจอยหรือโหลดหน้าเว็บ ให้ยิงอัปเดต Checklist ไปบอกทันที
+    sendChecklistToRoom(room);
+
+    // 🟢 ตรวจสอบว่าชื่อผู้เล่นคนนี้เคยอยู่ในห้องนี้อยู่แล้วหรือไม่ (กรณีรีเฟรชกลับมา)
+    if (rooms[room].playersData[name]) {
+      // ทำการผูก Socket ID ใบใหม่ให้กับโปรไฟล์เดิมทันที
+      players[socket.id] = rooms[room].playersData[name];
+      console.log(
+        `🔄 ผู้เล่น ${name} รีเฟรชหน้าจอและเชื่อมต่อกลับเข้าห้อง ${room} สำเร็จ`,
+      );
+
+      // ส่งข้อมูลบทบาทและคดีเดิมกลับไปให้หน้าจอเขาทันที
+      socket.emit("receiveRole", {
+        role: players[socket.id].role,
+        clue: players[socket.id].clue,
+      });
+      if (rooms[room].currentCase) {
+        socket.emit("caseDetails", {
+          title: rooms[room].currentCase.caseTitle,
+          subtitle: rooms[room].currentCase.caseSubtitle,
+        });
+        // ส่งอัปเดตเฟสปัจจุบันให้เขาคนเดียวเพื่อปรับหน้าเว็บให้ทันเพื่อน
+        socket.emit("phaseChanged", {
+          phase: rooms[room].phase,
+          evidence: rooms[room].evidence,
+        });
+      }
+    } else {
+      // กรณีเป็นผู้เล่นใหม่แกะกล่องกดเข้าห้องมาปกติ
+      if (rooms[room].started) {
+        socket.emit(
+          "errorMsg",
+          "ห้องนี้เริ่มเกมไปแล้วครับ คุณไม่สามารถเข้าร่วมกลางคันได้",
+        );
+        return;
+      }
+
+      // บันทึกโปรไฟล์ลงตัวแปรหลัก
+      players[socket.id] = { name, room, role: "", clue: "", isAlive: true };
+      // สำรองโปรไฟล์ไว้ในห้องนี้กันรีเฟรช
+      rooms[room].playersData[name] = players[socket.id];
+    }
+
     updateRoomPlayers(room);
   });
 
   // 2. เมื่อหัวหน้าห้องกดเริ่มเกม
+  // 2. เมื่อหัวหน้าห้องกดเริ่มเกม (เวอร์ชันอัปเกรดระบบ Checklist ป้องกันคดีซ้ำ)
   socket.on("startGame", (room) => {
     const roomPlayers = Object.keys(players).filter(
       (id) => players[id].room === room,
@@ -70,23 +118,46 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // สุ่มคดีจากไฟล์ JSON 1 คดี
-    const randomCase = allCases[Math.floor(Math.random() * allCases.length)];
+    // 🟢 2.2 จุดแก้ไขหลัก: คัดกรองเลือกเฉพาะคดีที่ห้องนี้ยังไม่เคยสืบสวน
+    const availableCases = allCases.filter(
+      (c) => !rooms[room].playedCases.includes(c.caseTitle),
+    );
+
+    // ถ้าสุ่มเล่นจนครบทั้ง 10 คดีแล้ว ระบบจะแจ้งเตือนให้กดล้างประวัติก่อน
+    if (availableCases.length === 0) {
+      socket.emit(
+        "errorMsg",
+        "คุณสืบสวนครบทุกคดีในคลังแล้ว! กรุณากดปุ่ม 'รีเฟรชล้างคดีทั้งหมด' บนหน้าจอเพื่อเริ่มสุ่มใหม่ตั้งแต่ต้นครับ",
+      );
+      return;
+    }
+
+    // สุ่มคดีจาก "คดีที่เหลืออยู่เท่านั้น" (ด่านไหนเล่นแล้วจะไม่หลุดมาตรงนี้)
+    const randomCase =
+      availableCases[Math.floor(Math.random() * availableCases.length)];
     rooms[room].currentCase = randomCase;
 
+    // 🟢 บันทึกชื่อคดีที่ถูกสุ่มได้ในรอบนี้ เข้าเซฟลิสต์ของห้อง เพื่อไม่ให้โดนสุ่มซ้ำในตาถัดไป
+    rooms[room].playedCases.push(randomCase.caseTitle);
+
+    // อัปเดตหน้าตา Checklist ให้หน้าเว็บแสดงผลเป็น 🟩 เล่นแล้ว
+    sendChecklistToRoom(room);
+
+    // ปรับสถานะห้องว่าเริ่มเกมแล้ว
     rooms[room].started = true;
     rooms[room].phase = 1;
-    // สุ่มวัตถุพยานชิ้นกลางของคดีนั้นๆ มาใช้ในเฟส 2
+
+    // สุ่มวัตถุพยานชิ้นกลางของคดีนี้มาเตรียมไว้ใช้ในเฟส 2
     rooms[room].evidence =
       randomCase.globalEvidences[
         Math.floor(Math.random() * randomCase.globalEvidences.length)
       ];
 
-    // 🟢 ระบบคำนวณเวลาที่เหมาะสมอัตโนมัติตามจำนวนคนในห้อง
+    // ระบบคำนวณเวลาอัตโนมัติตามจำนวนคนในห้อง
     const totalPlayers = roomPlayers.length;
-    let phase1Time = 420; // ค่าเริ่มต้นสำหรับ 5-6 คน (7 นาที)
-    let phase2Time = 300; // (5 นาที)
-    let phase3Time = 180; // (3 นาที)
+    let phase1Time = 420; // 7 นาที (5-6 คน)
+    let phase2Time = 300; // 5 นาที
+    let phase3Time = 180; // 3 นาที
 
     if (totalPlayers <= 4) {
       phase1Time = 240; // 4 นาที
@@ -101,7 +172,7 @@ io.on("connection", (socket) => {
     rooms[room].phase2Duration = phase2Time;
     rooms[room].phase3Duration = phase3Time;
 
-    // สุ่มตำแหน่ง ฆาตกร และ นักสืบ (ห้ามเป็นคนซ้ำกัน)
+    // สุ่มตำแหน่ง ฆาตกร และ นักสืบ
     const killerIndex = Math.floor(Math.random() * roomPlayers.length);
     let detectiveIndex = Math.floor(Math.random() * roomPlayers.length);
     while (detectiveIndex === killerIndex) {
@@ -136,14 +207,14 @@ io.on("connection", (socket) => {
         innocentCount++;
       }
 
-      // ส่งบทบาทลับให้แต่ละบุคคลคนนั้นเห็นคนเดียว
+      // ส่งบทบาทให้แต่ละคนแบบลับๆ
       io.to(id).emit("receiveRole", {
         role: players[id].role,
         clue: players[id].clue,
       });
     });
 
-    // ส่งชื่อเรื่องและซับไตเติลคดีไปอัปเดตหน้าเว็บทุกคนพร้อมกัน
+    // ส่งชื่อเรื่องคดีไปอัปเดตหน้าเว็บทุกคน
     io.to(room).emit("caseDetails", {
       title: randomCase.caseTitle,
       subtitle: randomCase.caseSubtitle,
@@ -151,7 +222,7 @@ io.on("connection", (socket) => {
 
     io.to(room).emit("gameStarted");
 
-    // สั่งสตาร์ทเวลานับถอยหลังเฟส 1 ทันทีตามเวลาที่คำนวณได้
+    // สั่งสตาร์ทเวลานับถอยหลังเฟส 1
     startPhaseTimer(room, 1, phase1Time);
     updateRoomPlayers(room);
   });
@@ -199,14 +270,64 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 5. เมื่อมีผู้เล่นคนใดออกจากเกม
+  // 5. เมื่อมีผู้เล่นขาดการเชื่อมต่อ
   socket.on("disconnect", () => {
-    if (players[socket.id]) {
-      const room = players[socket.id].room;
-      const name = players[socket.id].name;
+    const pData = players[socket.id];
+    if (pData) {
+      const room = pData.room;
+      const name = pData.name;
+
+      // 🟢 ไม่ลบข้อมูลออกจาก rooms[room].playersData เพื่อเปิดโอกาสให้รีเฟรชกลับมาได้
+      // แต่ลบเฉพาะตัวจับคู่ socket.id ตัวเก่าทิ้ง
       delete players[socket.id];
+
       updateRoomPlayers(room);
-      io.to(room).emit("announceVote", `📢 ${name} ได้ออกจากห้องสอบสวนไปแล้ว`);
+      io.to(room).emit(
+        "announceVote",
+        `📢 สัญญาณของ ${name} ขาดหายไปชั่วคราว (กำลังรอการเชื่อมต่อใหม่...)`,
+      );
+    }
+  });
+
+  socket.on("backToLobby", (room) => {
+    if (rooms[room]) {
+      // 1. เคลียร์สถานะการเล่นในห้องให้กลับไปเป็นค่าเริ่มต้นของเฟส 1
+      rooms[room].started = false;
+      rooms[room].phase = 1;
+      rooms[room].evidence = "";
+      rooms[room].currentCase = null;
+
+      // 2. ล้างข้อมูลบทบาท (Role) และคำใบ้ (Clue) ของทุกคนในห้อง เพื่อเตรียมสุ่มใหม่ในตาถัดไป
+      const roomPlayers = Object.keys(players).filter(
+        (id) => players[id].room === room,
+      );
+      roomPlayers.forEach((id) => {
+        players[id].role = "";
+        players[id].clue = "";
+      });
+
+      // 3. ยิงสัญญาณบอกหน้าเว็บของทุกคนในห้องให้เด้งกลับหน้าล็อบบี้พร้อมกัน
+      io.to(room).emit("returnedToLobby");
+
+      // 4. อัปเดตรายชื่อคนในห้อง และรีเฟรชหน้าตาคดีสีเขียว-ขาวฝั่งหน้าบ้าน
+      updateRoomPlayers(room);
+      sendChecklistToRoom(room);
+    }
+  });
+
+  socket.on("resetRoomCases", (room) => {
+    if (rooms[room]) {
+      // สั่งล้างอาร์เรย์เก็บคดีที่เล่นแล้วให้เกลี้ยง เพื่อให้กลับมาสุ่มได้ครบ 10 ด่านอีกครั้ง
+      rooms[room].playedCases = [];
+
+      // ส่งข้อมูล Checklist คดีเวอร์ชันเคลียร์สะอาดกลับไปอัปเดตที่หน้าจอผู้เล่นทุกคน
+      sendChecklistToRoom(room);
+
+      // ประกาศแจ้งเตือนในระบบบันทึกให้ทราบ
+      io.to(room).emit(
+        "announceVote",
+        "🔄 [ระบบประจำคฤหาสน์]: มีการล้างประวัติแฟ้มคดีเรียบร้อยแล้ว! ทุกคดีสามารถถูกสุ่มขึ้นมาเล่นใหม่ได้อีกครั้ง",
+      );
     }
   });
 });
@@ -261,6 +382,16 @@ function updateRoomPlayers(room) {
     players: roomPlayers,
     started: rooms[room]?.started,
   });
+}
+
+// ฟังก์ชันประกอบข้อมูลส่งรายการคดีทั้งหมดพร้อมสถานะประวัติการเล่นให้กับฝั่งไคลเอนต์
+function sendChecklistToRoom(room) {
+  if (!rooms[room]) return;
+  const checklist = allCases.map((c) => ({
+    title: c.caseTitle,
+    played: rooms[room].playedCases.includes(c.caseTitle),
+  }));
+  io.to(room).emit("updateChecklist", { checklist });
 }
 
 module.exports = app;
