@@ -40,7 +40,7 @@ io.on("connection", (socket) => {
     socket.join(room);
 
     if (!rooms[room]) {
-      // เพิ่มตัวแปร playedCases เอาไว้จดบันทึก ID คดีที่ห้องนี้เล่นไปแล้ว
+      // 🟢 เพิ่ม playedCases: [] เพื่อรองรับระบบ Checklist ของหน้าบ้าน
       rooms[room] = {
         started: false,
         phase: 1,
@@ -53,7 +53,7 @@ io.on("connection", (socket) => {
       };
     }
 
-    // ทุกครั้งที่มีคนจอยหรือโหลดหน้าเว็บ ให้ยิงอัปเดต Checklist ไปบอกทันที
+    // 🟢 ส่งข้อมูล Checklist คดีไปอัปเดตหน้าจอทันทีที่มีการเชื่อมต่อเข้าห้อง
     sendChecklistToRoom(room);
 
     // 🟢 ตรวจสอบว่าชื่อผู้เล่นคนนี้เคยอยู่ในห้องนี้อยู่แล้วหรือไม่ (กรณีรีเฟรชกลับมา)
@@ -289,15 +289,15 @@ io.on("connection", (socket) => {
     }
   });
 
+  // 🟢 ฟังก์ชันรองรับปุ่มกลับหน้า Lobby หลังจบเกม
   socket.on("backToLobby", (room) => {
     if (rooms[room]) {
-      // 1. เคลียร์สถานะการเล่นในห้องให้กลับไปเป็นค่าเริ่มต้นของเฟส 1
       rooms[room].started = false;
       rooms[room].phase = 1;
       rooms[room].evidence = "";
       rooms[room].currentCase = null;
 
-      // 2. ล้างข้อมูลบทบาท (Role) และคำใบ้ (Clue) ของทุกคนในห้อง เพื่อเตรียมสุ่มใหม่ในตาถัดไป
+      // ล้างข้อมูลบทบาทและคำใบ้เก่าของทุกคนในห้องเพื่อเตรียมสุ่มใหม่รอบหน้า
       const roomPlayers = Object.keys(players).filter(
         (id) => players[id].room === room,
       );
@@ -306,27 +306,21 @@ io.on("connection", (socket) => {
         players[id].clue = "";
       });
 
-      // 3. ยิงสัญญาณบอกหน้าเว็บของทุกคนในห้องให้เด้งกลับหน้าล็อบบี้พร้อมกัน
+      // สั่งให้หน้าจอทุกคนเด้งกลับหน้า Lobby พร้อมกัน
       io.to(room).emit("returnedToLobby");
-
-      // 4. อัปเดตรายชื่อคนในห้อง และรีเฟรชหน้าตาคดีสีเขียว-ขาวฝั่งหน้าบ้าน
       updateRoomPlayers(room);
       sendChecklistToRoom(room);
     }
   });
 
+  // 🟢 ฟังก์ชันรองรับปุ่มรีเฟรชล้างคดีทั้งหมด
   socket.on("resetRoomCases", (room) => {
     if (rooms[room]) {
-      // สั่งล้างอาร์เรย์เก็บคดีที่เล่นแล้วให้เกลี้ยง เพื่อให้กลับมาสุ่มได้ครบ 10 ด่านอีกครั้ง
-      rooms[room].playedCases = [];
-
-      // ส่งข้อมูล Checklist คดีเวอร์ชันเคลียร์สะอาดกลับไปอัปเดตที่หน้าจอผู้เล่นทุกคน
-      sendChecklistToRoom(room);
-
-      // ประกาศแจ้งเตือนในระบบบันทึกให้ทราบ
+      rooms[room].playedCases = []; // ล้างประวัติให้เป็นอาร์เรย์ว่าง
+      sendChecklistToRoom(room); // ส่ง Checklist เวอร์ชันว่างเปล่ากลับไปเคลียร์หน้าจอ
       io.to(room).emit(
         "announceVote",
-        "🔄 [ระบบประจำคฤหาสน์]: มีการล้างประวัติแฟ้มคดีเรียบร้อยแล้ว! ทุกคดีสามารถถูกสุ่มขึ้นมาเล่นใหม่ได้อีกครั้ง",
+        "🔄 [ระบบประจำคฤหาสน์]: ล้างประวัติแฟ้มคดีเรียบร้อย! สามารถสุ่มเจอคดีเดิมได้อีกครั้ง",
       );
     }
   });
@@ -384,12 +378,14 @@ function updateRoomPlayers(room) {
   });
 }
 
-// ฟังก์ชันประกอบข้อมูลส่งรายการคดีทั้งหมดพร้อมสถานะประวัติการเล่นให้กับฝั่งไคลเอนต์
+// 🟢 ฟังก์ชันประกอบข้อมูลประวัติคดีเพื่อส่งให้ฝั่งหน้าบ้านเรนเดอร์ตาราง Checklist
 function sendChecklistToRoom(room) {
-  if (!rooms[room]) return;
+  if (!rooms[room] || !allCases) return;
   const checklist = allCases.map((c) => ({
     title: c.caseTitle,
-    played: rooms[room].playedCases.includes(c.caseTitle),
+    played: rooms[room].playedCases
+      ? rooms[room].playedCases.includes(c.caseTitle)
+      : false,
   }));
   io.to(room).emit("updateChecklist", { checklist });
 }

@@ -131,7 +131,6 @@
         background: #219653;
       }
 
-      /* สไตล์เพิ่มเติมสำหรับ Checklist */
       .checklist-box {
         background: #151515;
         border: 1px solid #444;
@@ -184,6 +183,18 @@
         <br />
         <button id="start-btn" onclick="startGame()">
           เริ่มปิดประตูคฤหาสน์ (เริ่มเฟส 1)
+        </button>
+
+        <button
+          onclick="leaveGame()"
+          style="
+            background: #555;
+            font-size: 14px;
+            padding: 8px;
+            margin-top: 5px;
+          "
+        >
+          ออกจากห้องนี้ (กลับหน้าแรก)
         </button>
 
         <div class="checklist-box">
@@ -261,9 +272,9 @@
           id="back-to-lobby-btn"
           class="hidden"
           onclick="requestBackToLobby()"
-          style="background: #34495e; color: #fff; margin-top: 15px"
+          style="background: #27ae60; color: #fff; margin-top: 15px"
         >
-          🔙 พาเพื่อนกลับไปหน้า Lobby เพื่อเล่นต่อ
+          🔙 พาทุกคนในห้องกลับไปหน้า Lobby เพื่อเล่นคดีถัดไป
         </button>
 
         <h4
@@ -376,6 +387,7 @@
       let currentPhase = 1;
       let currentPlayersInRoom = [];
 
+      // เช็กข้อมูลเก่าตอนเปิดเว็บ/รีเฟรชหน้าจอ
       window.onload = function () {
         const savedName = localStorage.getItem("detective_name");
         const savedRoom = localStorage.getItem("detective_room");
@@ -404,6 +416,7 @@
         document.getElementById("display-room").innerText = myRoom;
       }
 
+      // กดออกจากห้องแบบถาวร (ลบ Session)
       function leaveGame() {
         localStorage.clear();
         window.location.reload();
@@ -415,13 +428,15 @@
           .map((p) => `• <b>${p}</b>`)
           .join("<br>");
 
+        // 🟢 แก้ไขระบบสลับหน้าจอตามสถานะจริงของห้องหลังจากรีเฟรช (แก้จุดที่ 3)
         if (started) {
           document.getElementById("lobby-screen").classList.add("hidden");
           document.getElementById("game-screen").classList.remove("hidden");
         } else {
+          // ถ้าเช็กแล้วว่าเซิร์ฟเวอร์บอกว่าห้องนี้ยังไม่กดเริ่มเกม ให้เปิดหน้า Lobby ค้างไว้ ไม่เด้งหลุด
           if (localStorage.getItem("detective_name")) {
             document.getElementById("lobby-screen").classList.remove("hidden");
-            document.getElementById("game-screen").classList.add("hidden"); // ซ่อนหน้าเกมชัวร์ๆ
+            document.getElementById("game-screen").classList.add("hidden");
           }
         }
         renderGameUI();
@@ -437,19 +452,16 @@
         socket.emit("votePlayer", { room: myRoom, targetName: targetName });
       }
 
-      // 🟢 ฟังก์ชันส่งสัญญาณขอล้างประวัติการเล่นคดีเพื่อเริ่มสุ่มใหม่ทั้งหมด
       function resetCaseHistory() {
         socket.emit("resetRoomCases", myRoom);
       }
-
-      // 🟢 ฟังก์ชันส่งสัญญาณขอกลับหน้าล็อบบี้
       function requestBackToLobby() {
         socket.emit("backToLobby", myRoom);
       }
 
       function closeSolutionModal() {
         document.getElementById("solution-modal").style.display = "none";
-        // เมื่อดูเฉลยเสร็จ จะเปิดปุ่มให้สามารถกดพาทุกคนกลับหน้า Lobby ได้
+        // เมื่อเปิดดูเฉลยเสร็จ จะเปิดปุ่มสีเขียวให้กดพาทุกคนกลับหน้าล็อบบี้ได้ทันที
         document.getElementById("back-to-lobby-btn").classList.remove("hidden");
       }
 
@@ -460,12 +472,12 @@
       socket.on("gameStarted", () => {
         document.getElementById("lobby-screen").classList.add("hidden");
         document.getElementById("game-screen").classList.remove("hidden");
-        document.getElementById("back-to-lobby-btn").classList.add("hidden"); // รีเซ็ตซ่อนปุ่มกลับล็อบบี้
+        document.getElementById("back-to-lobby-btn").classList.add("hidden");
       });
 
-      // 🟢 ดักรับข้อมูล Checklist เพื่อเอาไปเรนเดอร์ในบอร์ดหน้าล็อบบี้
       socket.on("updateChecklist", ({ checklist }) => {
         const checklistArea = document.getElementById("case-checklist-area");
+        if (!checklistArea) return;
         if (checklist.length === 0) {
           checklistArea.innerHTML =
             "<span style='color:#aaa;'>ไม่พบข้อมูลคดีในระบบ</span>";
@@ -485,11 +497,12 @@
           .join("");
       });
 
-      // 🟢 เมื่อคนในห้องกดพาทุกคนกลับหน้าล็อบบี้สำเร็จ ให้สลับหน้าจอกลับมารอเพื่อน
+      // เมื่อทุกคนในห้องโดนดึงกลับหน้าล็อบบี้สำเร็จ ให้สลับเปลี่ยนหน้าจอเคลียร์ค่าเดิม
       socket.on("returnedToLobby", () => {
         document.getElementById("game-screen").classList.add("hidden");
         document.getElementById("lobby-screen").classList.remove("hidden");
-        // รีเซ็ตข้อความหัวเว็บเดิม
+        document.getElementById("back-to-lobby-btn").classList.add("hidden");
+
         document.getElementById("game-title").innerText = "🕵️‍♂️ คดีปริศนาออนไลน์";
         document.getElementById("game-subtitle").innerText =
           "กรุณาเข้าห้องเพื่อจับฉลากสุ่มคดีฆาตกรรม";
