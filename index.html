@@ -155,7 +155,6 @@
         color: #888;
       }
 
-      /* 🟢 สไตล์เพิ่มเติมสำหรับปุ่มลอย (Floating Action Button) และตารางคะแนน */
       .fab-score-btn {
         position: fixed;
         top: 15px;
@@ -204,7 +203,6 @@
         color: #f1c40f;
       }
 
-      /* ป้ายแจ้งผลแพ้ชนะตอนท้ายเกม */
       .result-badge {
         padding: 12px;
         border-radius: 8px;
@@ -440,7 +438,6 @@
         <div id="pop-user-result" class="result-badge">
           กำลังตรวจใบสรุปผล...
         </div>
-
         <h2 style="color: #f1c40f; margin-top: 10px; font-size: 24px">
           ⚖️ สรุปผลการจับกุม!
         </h2>
@@ -502,16 +499,22 @@
       let myRole = "";
       let currentPhase = 1;
 
+      // 🟢 แก้ไขจุดที่ 1: ตรรกะตรวจเช็กประวัติ Session เดิมตอนโหลดหน้าเว็บใหม่
       window.onload = function () {
         const savedName = localStorage.getItem("detective_name");
         const savedRoom = localStorage.getItem("detective_room");
+
         if (savedName && savedRoom) {
+          // ดึงค่าเก่าคืนมา
           myName = savedName;
           myRoom = savedRoom;
-          document.getElementById("login-screen").classList.add("hidden");
-          document.getElementById("score-fab").classList.remove("hidden"); // แสดงปุ่มคะแนนลอยตัว
           document.getElementById("display-room").innerText = myRoom;
+
+          // ส่งสัญญาณแจ้งเซิร์ฟเวอร์ว่าเราขอกลับเข้าห้องเดิม
           socket.emit("joinRoom", { name: myName, room: myRoom });
+        } else {
+          // 🟢 ถ้าไม่มีประวัติค้างอยู่ ให้บังคับเปิดหน้าจอล็อกอินขึ้นมาโชว์ 100% ป้องกันหน้าจอโล่งว่าง
+          switchPage("login");
         }
       };
 
@@ -526,8 +529,6 @@
         localStorage.setItem("detective_name", myName);
         localStorage.setItem("detective_room", myRoom);
 
-        document.getElementById("login-screen").classList.add("hidden");
-        document.getElementById("score-fab").classList.remove("hidden"); // 🟢 ปลดล็อกให้เห็นปุ่มคะแนนลอยตัว
         document.getElementById("display-room").innerText = myRoom;
         socket.emit("joinRoom", { name: myName, room: myRoom });
       }
@@ -537,19 +538,36 @@
         window.location.reload();
       }
 
-      // ฟังก์ชันเปิด-ปิด หน้าต่างตารางคะแนนสะสม
       function toggleScoreModal(show) {
         document.getElementById("score-modal").style.display = show
           ? "flex"
           : "none";
       }
 
+      // 🟢 ฟังก์ชันกลางที่ผมทำเสริมขึ้นมาเพื่อช่วยสับเปลี่ยนหน้าเว็บให้แม่นยำ ไม่ตีกันเอง
+      function switchPage(pageName) {
+        document.getElementById("login-screen").classList.add("hidden");
+        document.getElementById("lobby-screen").classList.add("hidden");
+        document.getElementById("game-screen").classList.add("hidden");
+        document.getElementById("score-fab").classList.add("hidden");
+
+        if (pageName === "login") {
+          document.getElementById("login-screen").classList.remove("hidden");
+        } else if (pageName === "lobby") {
+          document.getElementById("lobby-screen").classList.remove("hidden");
+          document.getElementById("score-fab").classList.remove("hidden"); // แสดงปุ่มคะแนน
+        } else if (pageName === "game") {
+          document.getElementById("game-screen").classList.remove("hidden");
+          document.getElementById("score-fab").classList.remove("hidden"); // แสดงปุ่มคะแนน
+        }
+      }
+
+      // 🟢 แก้ไขจุดที่ 2: จัดการสลับหน้าจออย่างปลอดภัยเมื่อได้รับข้อมูลอัปเดตจากหลังบ้าน
       socket.on("roomData", ({ players, started, rawPlayersData }) => {
         document.getElementById("player-list").innerHTML = players
           .map((p) => `• <b>${p}</b>`)
           .join("<br>");
 
-        // 🟢 อัปเดตตารางสรุปคะแนนเรียลไทม์ใส่ลงไปใน Leaderboard FAB
         if (rawPlayersData) {
           const sortedPlayers = Object.values(rawPlayersData).sort(
             (a, b) => b.score - a.score,
@@ -566,13 +584,15 @@
             .join("");
         }
 
+        // คุมทิศทางของหน้าจอให้อยู่ถูกที่ ถูกเวลา
         if (started) {
-          document.getElementById("lobby-screen").classList.add("hidden");
-          document.getElementById("game-screen").classList.remove("hidden");
+          switchPage("game");
         } else {
+          // ถ้าแอดมินหรือระบบยังไม่ได้กดสตาร์ทเกม ให้พาทุกคนที่ล็อกอินแล้วมารอที่หน้าล็อบบี้เสมอ
           if (localStorage.getItem("detective_name")) {
-            document.getElementById("lobby-screen").classList.remove("hidden");
-            document.getElementById("game-screen").classList.add("hidden");
+            switchPage("lobby");
+          } else {
+            switchPage("login");
           }
         }
         renderGameUI(players);
@@ -603,8 +623,7 @@
       socket.on("errorMsg", (msg) => alert(msg));
 
       socket.on("gameStarted", () => {
-        document.getElementById("lobby-screen").classList.add("hidden");
-        document.getElementById("game-screen").classList.remove("hidden");
+        switchPage("game");
         document.getElementById("back-to-lobby-btn").classList.add("hidden");
       });
 
@@ -631,8 +650,7 @@
       });
 
       socket.on("returnedToLobby", () => {
-        document.getElementById("game-screen").classList.add("hidden");
-        document.getElementById("lobby-screen").classList.remove("hidden");
+        switchPage("lobby");
         document.getElementById("back-to-lobby-btn").classList.add("hidden");
         document.getElementById("game-title").innerText = "🕵️‍♂️ คดีปริศนาออนไลน์";
         document.getElementById("game-subtitle").innerText =
@@ -724,7 +742,6 @@
         logs.scrollTop = logs.scrollHeight;
       });
 
-      // 🟢 ดักรับสัญญาณเฉลย และคำนวณป้ายประกาศคุณคือผู้ชนะหรือผู้แพ้รายบุคคล
       socket.on(
         "showSolutionPopup",
         ({ targetName, solutionText, winners }) => {
@@ -732,8 +749,6 @@
           document.getElementById("pop-solution").innerText = solutionText;
 
           const resultBadge = document.getElementById("pop-user-result");
-
-          // เช็กว่าชื่อของเราติดโผอยู่ในลิสต์กลุ่มคนชนะ (winners) ที่เซิร์ฟเวอร์คำนวณส่งมาหรือไม่
           if (winners.includes(myName)) {
             resultBadge.innerText = "🎉 คุณคือผู้ชนะในตานี้!";
             resultBadge.className = "result-badge result-win";
