@@ -3,27 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>คดีปริศนาออนไลน์</title>
+    <title>คดีปริศนาออนไลน์ - บอร์ดเกมสืบสวน</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
       body {
-        font-family: sans-serif;
-        background-color: #1a1a1a;
+        font-family: "Segoe UI", sans-serif;
+        background-color: #121212;
         color: #fff;
         text-align: center;
         padding: 20px;
       }
       .container {
-        max-width: 500px;
+        max-width: 550px;
         margin: 0 auto;
-        background: #2d2d2d;
+        background: #1e1e1e;
         padding: 25px;
-        border-radius: 12px;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+        border-radius: 14px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+        border: 1px solid #333;
       }
       input,
       button {
-        width: 90%;
+        width: 92%;
         padding: 12px;
         margin: 10px 0;
         border-radius: 6px;
@@ -31,113 +32,169 @@
         font-size: 16px;
       }
       input {
-        background: #444;
+        background: #2d2d2d;
         color: #fff;
+        border: 1px solid #444;
       }
       button {
-        background: #ff4d4d;
+        background: #c0392b;
         color: white;
         cursor: pointer;
         font-weight: bold;
+        transition: 0.2s;
       }
       button:hover {
-        background: #cc3333;
+        background: #a93226;
       }
       .hidden {
         display: none;
       }
       .box {
-        background: #3d3d3d;
+        background: #2a2a2a;
         padding: 15px;
         border-radius: 8px;
         margin: 15px 0;
-        border-left: 5px solid #ff4d4d;
+        border-left: 5px solid #e74c3c;
+        text-align: left;
       }
       .phase-box {
-        background: #1f3a52;
-        border-left: 5px solid #007bff;
+        background: #1a365d;
+        border-left: 5px solid #3182ce;
         padding: 15px;
         border-radius: 8px;
         margin: 15px 0;
         font-weight: bold;
+        text-align: left;
       }
+
+      .timer-box {
+        font-size: 28px;
+        font-weight: bold;
+        background: #ffcc00;
+        color: #000;
+        padding: 10px;
+        border-radius: 8px;
+        margin: 15px 0;
+        display: inline-block;
+        width: 140px;
+        border: 2px solid #fff;
+        box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+      }
+      .timer-warning {
+        background: #e74c3c !important;
+        color: #fff !important;
+        animation: blink 1s infinite;
+      }
+      @keyframes blink {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+
       .player-tag {
         display: inline-block;
-        background: #555;
-        padding: 8px 12px;
-        margin: 5px;
+        background: #444;
+        padding: 10px 15px;
+        margin: 6px;
         border-radius: 20px;
         font-weight: bold;
       }
       .clickable {
         cursor: pointer;
-        background: #e67e22;
+        background: #d35400;
+        border: 1px solid #e67e22;
       }
       .clickable:hover {
-        background: #d35400;
+        background: #e67e22;
       }
       #logs {
-        max-height: 120px;
+        max-height: 140px;
         overflow-y: auto;
-        background: #222;
+        background: #000;
         padding: 10px;
         font-size: 14px;
         text-align: left;
         border-radius: 5px;
-        border: 1px solid #444;
+        border: 1px solid #333;
+        line-height: 1.5;
       }
       .btn-next {
-        background: #2ecc71;
+        background: #27ae60;
       }
       .btn-next:hover {
-        background: #27ae60;
+        background: #219653;
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>🕵️‍♂️ คดีปริศนาออนไลน์</h1>
-      <hr style="border-color: #444" />
+      <h1 id="game-title">🕵️‍♂️ คดีปริศนาออนไลน์</h1>
+      <p
+        id="game-subtitle"
+        style="color: #aaa; font-size: 14px; margin-top: -10px"
+      >
+        กรุณาเข้าห้องเพื่อจับฉลากสุ่มคดีฆาตกรรม
+      </p>
+      <hr style="border-color: #333" />
 
       <div id="login-screen">
-        <input type="text" id="username" placeholder="ใส่ชื่อของคุณ" />
-        <input type="text" id="room-id" placeholder="รหัสห้อง (เช่น room123)" />
-        <button onclick="joinRoom()">เข้าห้องเกม</button>
+        <input type="text" id="username" placeholder="ใส่ชื่อนามแฝงของคุณ" />
+        <input
+          type="text"
+          id="room-id"
+          placeholder="รหัสห้องสัมภาษณ์ (เช่น room99)"
+        />
+        <button onclick="joinRoom()">เข้าสู่คฤหาสน์</button>
       </div>
 
       <div id="lobby-screen" class="hidden">
-        <h2>ห้อง: <span id="display-room"></span></h2>
-        <h3>ผู้เล่นในห้องปัจจุบัน:</h3>
-        <div id="player-list"></div>
+        <h2>ห้องลับ: <span id="display-room" style="color: #f1c40f"></span></h2>
+        <h3>รายชื่อผู้ต้องสงสัยที่มาถึงแล้ว:</h3>
+        <div id="player-list" style="font-size: 18px; line-height: 1.8"></div>
         <br />
         <button id="start-btn" onclick="startGame()">
-          เริ่มแจกบทบาทและเริ่มเฟส 1
+          เริ่มปิดประตูคฤหาสน์ (เริ่มเฟส 1)
         </button>
       </div>
 
       <div id="game-screen" class="hidden">
+        <div>
+          <div id="game-timer" class="timer-box">00:00</div>
+        </div>
+
         <div id="phase-display" class="phase-box"></div>
 
         <div class="box">
-          <h2 id="my-role" style="color: #ff4d4d">กำลังรับบทบาท...</h2>
-          <p id="my-clue"></p>
+          <h3 id="my-role" style="color: #e74c3c; margin: 0 0 5px 0">
+            บทบาทของคุณ: กำลังคำนวณ...
+          </h3>
+          <p
+            id="my-clue"
+            style="margin: 0; font-size: 15px; color: #ddd; line-height: 1.4"
+          ></p>
         </div>
 
         <div
           id="evidence-box"
           class="box hidden"
-          style="border-left-color: #f1c40f; background: #4a3c00"
+          style="border-left-color: #f1c40f; background: #3a3210"
         >
-          <h3 style="color: #f1c40f; margin: 0 0 5px 0">
-            🔍 พบหลักฐานชิ้นสำคัญกลาง:
-          </h3>
+          <h4 style="color: #f1c40f; margin: 0 0 5px 0">
+            🔍 วัตถุพยานชิ้นสำคัญที่พบเพิ่ม:
+          </h4>
           <p
             id="evidence-text"
-            style="margin: 0; font-size: 16px; font-weight: bold"
+            style="margin: 0; font-size: 15px; font-weight: bold; color: #fff"
           ></p>
         </div>
 
-        <h3>👥 รายชื่อบุคคลในบ้านหลังนี้</h3>
+        <h3>👥 ผู้มีส่วนเกี่ยวข้องในเหตุการณ์</h3>
         <div id="voting-list"></div>
 
         <button
@@ -145,10 +202,19 @@
           class="btn-next hidden"
           onclick="nextPhase()"
         >
-          ถัดไป: เข้าสู่เฟส 2 ➡️
+          ส่งต่อเข้าสู่เฟสถัดไป ➡️
         </button>
 
-        <h4 style="margin-top: 20px">📜 บันทึกเหตุการณ์ในห้องสอบสวน:</h4>
+        <h4
+          style="
+            margin-top: 20px;
+            text-align: left;
+            color: #aaa;
+            margin-bottom: 5px;
+          "
+        >
+          📜 บันทึกคำให้การและการสรุปคดี:
+        </h4>
         <div id="logs"></div>
       </div>
     </div>
@@ -177,7 +243,7 @@
       socket.on("roomData", ({ players, started }) => {
         currentPlayersInRoom = players;
         document.getElementById("player-list").innerHTML = players
-          .map((p) => `• ${p}`)
+          .map((p) => `• <b>${p}</b>`)
           .join("<br>");
         renderGameUI();
       });
@@ -193,21 +259,45 @@
       }
 
       socket.on("errorMsg", (msg) => alert(msg));
+
       socket.on("gameStarted", () => {
         document.getElementById("lobby-screen").classList.add("hidden");
         document.getElementById("game-screen").classList.remove("hidden");
       });
 
+      // 🟢 ใส่ไว้ตรงนี้เลยครับ! ฟังก์ชันคอยอัปเดตหัวข้อและคำอธิบายคดีที่สุ่มมาจาก Server
+      socket.on("caseDetails", ({ title, subtitle }) => {
+        document.getElementById("game-title").innerText = `🕵️‍♂️ ${title}`;
+        document.getElementById("game-subtitle").innerText = subtitle;
+      });
+
       socket.on("receiveRole", ({ role, clue }) => {
         myRole = role;
-        document.getElementById("my-role").innerText = role;
+        document.getElementById("my-role").innerText = `คุณคือ: ${role}`;
         document.getElementById("my-clue").innerText = clue;
-        if (myRole === "🔵 นักสืบ (Detective)") {
+        if (myRole.includes("นักสืบ")) {
           document.getElementById("next-phase-btn").classList.remove("hidden");
         }
       });
 
-      // รับข้อมูลอัปเดตเมื่อมีการเปลี่ยนเฟสเกม
+      // อัพเดตนาฬิกาถอยหลังเรียลไทม์
+      socket.on("timerUpdate", ({ minutes, seconds, expired }) => {
+        const timerElement = document.getElementById("game-timer");
+        const strMins = String(minutes).padStart(2, "0");
+        const strSecs = String(seconds).padStart(2, "0");
+        timerElement.innerText = `${strMins}:${strSecs}`;
+
+        if (minutes === 0 && seconds < 60 && !expired) {
+          timerElement.classList.add("timer-warning");
+        } else {
+          timerElement.classList.remove("timer-warning");
+        }
+
+        if (expired) {
+          timerElement.innerText = "00:00";
+        }
+      });
+
       socket.on("phaseChanged", ({ phase, evidence }) => {
         currentPhase = phase;
         const phaseDisplay = document.getElementById("phase-display");
@@ -216,43 +306,39 @@
 
         if (phase === 1) {
           phaseDisplay.innerHTML =
-            "💬 Phase 1: ช่วงสอบสวนพยาน<br><span style='font-size:13px; font-weight:normal;'>นักสืบจะสุ่มพูดคุยกับพยาน พยานต้องทำการ Roleplay ตามเรื่องราวตัวเอง</span>";
-          if (myRole === "🔵 นักสืบ (Detective)") {
-            nextBtn.innerText = "ถัดไป: ไปยังเฟส 2 (เปิดหลักฐานกลาง) ➡️";
-            nextBtn.classList.remove("hidden");
+            "💬 <b>Phase 1: ช่วงสอบสวนพยาน</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>นักสืบจะเชิญพยานพูดคุยทีละคน พยานทุกคนต้อง Roleplay แก้ต่างตามเงื่อนไขลับของตนเองเพื่อความบริสุทธิ์</span>";
+          if (myRole.includes("นักสืบ")) {
+            nextBtn.innerText = "ข้ามไปยัง Phase 2 (เปิดวัตถุพยานกลาง) ➡️";
           }
         } else if (phase === 2) {
           phaseDisplay.innerHTML =
-            "🔍 Phase 2: ตรวจสอบหลักฐานชิ้นสำคัญ<br><span style='font-size:13px; font-weight:normal;'>ทุกคนมีเอี่ยวกับหลักฐานนี้! นักสืบจะเริ่มเค้นความจริงตามหลักฐานที่ปรากฏ</span>";
+            "🔍 <b>Phase 2: ตรวจสอบหลักฐานชิ้นสำคัญ</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>พบหลักฐานเด็ดกลางที่เกิดเหตุ! นักสืบจะเจาะลึก timeline และเค้นความจริงว่าหลักฐานนี้ผูกมัดไปที่ใคร</span>";
           evidenceBox.classList.remove("hidden");
           document.getElementById("evidence-text").innerText = evidence;
-          if (myRole === "🔵 นักสืb (Detective)") {
-            nextBtn.innerText = "ถัดไป: ไปยังเฟส 3 (ชี้ตัวคนร้าย!) ➡️";
-            nextBtn.classList.remove("hidden");
+          if (myRole.includes("นักสืบ")) {
+            nextBtn.innerText = "ข้ามไปยัง Phase 3 (ตัดสินชี้ตัวฆาตกร!) ➡️";
           } else {
             nextBtn.classList.add("hidden");
           }
         } else if (phase === 3) {
           phaseDisplay.innerHTML =
-            "⚖️ Phase 3: ชี้ตัวคนร้าย (สรุปคดี)<br><span style='font-size:13px; font-weight:normal;'>ถึงเวลาที่นักสืบจะต้องกดเลือกชื่อเพื่อชี้ตัวฆาตกรตัวจริงแล้ว!</span>";
-          nextBtn.classList.add("hidden"); // เฟสสุดท้าย ไม่มีปุ่มไปต่อ
+            "⚖️ <b>Phase 3: ชี้ตัวคนร้ายสรุปคดี</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>เวลาสุดท้ายบีบคั้น! นักสืบต้องเลือกกดปุ่มจับกุมผู้ต้องสงสัยที่คุณคิดว่าเป็นฆาตกรตัวจริงในช่องรายชื่อ</span>";
+          nextBtn.classList.add("hidden");
+          evidenceBox.classList.remove("hidden");
         }
         renderGameUI();
       });
 
       function renderGameUI() {
         const votingList = document.getElementById("voting-list");
-
-        // ถ้าเป็นเฟส 3 และฉันคือนักสืบ -> ระบบจะเปลี่ยนชื่อทุกคนให้กลายเป็นปุ่มกดโหวตได้
-        if (currentPhase === 3 && myRole === "🔵 นักสืบ (Detective)") {
+        if (currentPhase === 3 && myRole.includes("นักสืบ")) {
           votingList.innerHTML = currentPlayersInRoom
             .map(
               (p) =>
-                `<span class="player-tag clickable" onclick="vote('${p}')">🎯 ชี้ตัวจับกุม ${p}</span>`,
+                `<span class="player-tag clickable" onclick="vote('${p}')">🎯 จับกุม ${p}</span>`,
             )
             .join(" ");
         } else {
-          // เฟสอื่นๆ หรือเป็นคนธรรมดา เห็นแค่รายชื่อปกติ
           votingList.innerHTML = currentPlayersInRoom
             .map((p) => `<span class="player-tag">👤 ${p}</span>`)
             .join(" ");
