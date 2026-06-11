@@ -1,0 +1,13 @@
+{
+  "name": "detective-game",
+  "version": "1.0.0",
+  "description": "เกมสืบคดีออนไลน์",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
