@@ -170,20 +170,32 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 4. ระบบนักสืบโหวตจับกุมคนร้าย
+  // 4. ระบบนักสืบโหวตจับกุมคนร้าย (อัปเดตเพิ่มการส่งโพยเฉลยคดี)
   socket.on("votePlayer", ({ room, targetName }) => {
     const player = players[socket.id];
     if (player && player.role.includes("นักสืบ")) {
-      clearInterval(timers[room]); // หยุดตัวจับเวลาถอยหลังทันทีเมื่อส่งคำตัดสินแล้ว
+      clearInterval(timers[room]); // หยุดเวลานาฬิกาถอยหลัง
       io.to(room).emit("timerUpdate", {
         minutes: 0,
         seconds: 0,
         expired: true,
       });
+
+      // ประกาศชื่อผู้ถูกจับกุมในช่องแชทบันทึกคำให้การตามปกติ
       io.to(room).emit(
         "announceVote",
         `⚖️ **[ปิดคดีอย่างเป็นทางการ!]** นักสืบ ${player.name} ได้ทุบโต๊ะชี้ตัวจับกุมผู้ต้องสงสัยหลักคือ: **${targetName}** ! สมาชิกทุกคนเปิดเผยบทบาทจริงในแชทเพื่อตรวจสอบผลลัพธ์ได้เลย!`,
       );
+
+      // 🟢 ดึงข้อมูลเฉลยจากคดีปัจจุบันในห้องนั้นออกมา
+      const currentCaseSolution =
+        rooms[room].currentCase?.caseSolution || "ไม่พบข้อมูลเฉลยสำหรับคดีนี้";
+
+      // 🟢 ส่งสัญญาณบอกทุกหน้าจอให้เปิด Pop-up เฉลยพร้อมๆ กัน
+      io.to(room).emit("showSolutionPopup", {
+        targetName: targetName,
+        solutionText: currentCaseSolution,
+      });
     }
   });
 

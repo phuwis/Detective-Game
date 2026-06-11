@@ -219,6 +219,89 @@
       </div>
     </div>
 
+    <div
+      id="solution-modal"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+      "
+    >
+      <div
+        style="
+          background: #2c3e50;
+          padding: 30px;
+          border-radius: 15px;
+          max-width: 480px;
+          width: 90%;
+          border: 3px solid #f1c40f;
+          box-shadow: 0 0 30px rgba(241, 196, 15, 0.4);
+          color: #fff;
+          text-align: center;
+        "
+      >
+        <h2 style="color: #f1c40f; margin-top: 0; font-size: 26px">
+          ⚖️ สรุปผลการจับกุม!
+        </h2>
+        <p
+          style="
+            font-size: 18px;
+            background: #1a252f;
+            padding: 10px;
+            border-radius: 8px;
+          "
+        >
+          ผู้ต้องสงสัยที่ถูกจับ:
+          <span id="pop-target" style="color: #e74c3c; font-weight: bold"
+            >-</span
+          >
+        </p>
+        <div
+          style="
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: left;
+            margin: 20px 0;
+            border-left: 5px solid #2ecc71;
+            line-height: 1.6;
+          "
+        >
+          <h4 style="margin: 0 0 5px 0; color: #2ecc71">
+            📜 แฟ้มลับคำเฉลยและหลักฐาน:
+          </h4>
+          <p
+            id="pop-solution"
+            style="margin: 0; font-size: 15px; color: #eceff1"
+          ></p>
+        </div>
+        <button
+          onclick="
+            document.getElementById('solution-modal').style.display = 'none'
+          "
+          style="
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            width: auto;
+          "
+        >
+          ปิดหน้าต่างเฉลย
+        </button>
+      </div>
+    </div>
+
     <script>
       const socket = io();
       let myName = "";
@@ -265,7 +348,7 @@
         document.getElementById("game-screen").classList.remove("hidden");
       });
 
-      // 🟢 ใส่ไว้ตรงนี้เลยครับ! ฟังก์ชันคอยอัปเดตหัวข้อและคำอธิบายคดีที่สุ่มมาจาก Server
+      // อัปเดตหัวข้อและคำอธิบายคดีที่สุ่มมาจาก Server
       socket.on("caseDetails", ({ title, subtitle }) => {
         document.getElementById("game-title").innerText = `🕵️‍♂️ ${title}`;
         document.getElementById("game-subtitle").innerText = subtitle;
@@ -298,6 +381,7 @@
         }
       });
 
+      // ระบบเปลี่ยนเฟสและเงื่อนไขการแสดงผล UI
       socket.on("phaseChanged", ({ phase, evidence }) => {
         currentPhase = phase;
         const phaseDisplay = document.getElementById("phase-display");
@@ -317,7 +401,6 @@
           evidenceBox.classList.remove("hidden");
           document.getElementById("evidence-text").innerText = evidence;
 
-          // 🟢 จุดที่แก้ไขตัวสะเคราะห์ "นักสืบ" ให้ถูกต้องแล้ว
           if (myRole.includes("นักสืบ")) {
             nextBtn.innerText = "ข้ามไปยัง Phase 3 (ตัดสินชี้ตัวฆาตกร!) ➡️";
             nextBtn.classList.remove("hidden");
@@ -327,7 +410,7 @@
         } else if (phase === 3) {
           phaseDisplay.innerHTML =
             "⚖️ <b>Phase 3: ชี้ตัวคนร้ายสรุปคดี</b><br><span style='font-size:13px; font-weight:normal; color:#ddd;'>เวลาสุดท้ายบีบคั้น! นักสืบต้องเลือกกดปุ่มจับกุมผู้ต้องสงสัยที่คุณคิดว่าเป็นฆาตกรตัวจริงในช่องรายชื่อ</span>";
-          nextBtn.classList.add("hidden"); // เฟสสุดท้าย ปุ่มข้ามจะหายไปอัตโนมัติ
+          nextBtn.classList.add("hidden");
           evidenceBox.classList.remove("hidden");
         }
         renderGameUI();
@@ -353,6 +436,13 @@
         const logs = document.getElementById("logs");
         logs.innerHTML += `<div>${msg}</div>`;
         logs.scrollTop = logs.scrollHeight;
+      });
+
+      // ดักรับสัญญาณเปิด Pop-up เฉลยท้ายเกมพร้อมกันทุกคน
+      socket.on("showSolutionPopup", ({ targetName, solutionText }) => {
+        document.getElementById("pop-target").innerText = targetName;
+        document.getElementById("pop-solution").innerText = solutionText;
+        document.getElementById("solution-modal").style.display = "flex";
       });
     </script>
   </body>
